@@ -32,11 +32,11 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 
-#include <magic_enum.hpp>
-#include <magic_enum_flags.hpp>
-#include <magic_enum_fuse.hpp>
-#include <magic_enum_iostream.hpp>
-#include <magic_enum_utility.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_flags.hpp>
+#include <magic_enum/magic_enum_fuse.hpp>
+#include <magic_enum/magic_enum_iostream.hpp>
+#include <magic_enum/magic_enum_utility.hpp>
 
 #include <array>
 #include <cctype>
@@ -49,17 +49,17 @@ struct magic_enum::customize::enum_range<Color> {
   static constexpr bool is_flags = true;
 };
 
-enum class Numbers : int {
-  none = 0,
-  one = 1 << 1,
-  two = 1 << 2,
-  three = 1 << 3,
-  many = 1 << 30,
-};
-template <>
-struct magic_enum::customize::enum_range<Numbers> {
-  static constexpr bool is_flags = true;
-};
+namespace Namespace {
+    enum class Numbers : int {
+        none = 0,
+        one = 1 << 1,
+        two = 1 << 2,
+        three = 1 << 3,
+        many = 1 << 30,
+    };
+    magic_enum::customize::adl_info<true> adl_magic_enum_define_range(Numbers);
+}
+using Namespace::Numbers;
 
 enum Directions : std::uint64_t {
   NoDirection = 0,
@@ -91,8 +91,8 @@ struct magic_enum::customize::enum_range<number> {
   static constexpr bool is_flags = true;
 };
 
-#include <magic_enum.hpp>
-#include <magic_enum_fuse.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_fuse.hpp>
 
 using namespace magic_enum;
 using namespace magic_enum::bitwise_operators;
@@ -720,7 +720,7 @@ TEST_CASE("constexpr_for") {
 
 #if defined(__cpp_lib_format)
 
-#include <magic_enum_format.hpp>
+#include <magic_enum/magic_enum_format.hpp>
 
 TEST_CASE("format-base") {
   REQUIRE(std::format("Test-{:~^11}.", Color::RED | Color::GREEN) == "Test-~RED|GREEN~.");
