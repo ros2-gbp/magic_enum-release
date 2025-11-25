@@ -209,6 +209,13 @@ if(MAGIC_ENUM_OPT_INSTALL)
     list(APPEND MAGIC_ENUM_EXPORT_TARGETS "${PROJECT_NAME}_module")
   endif()
 
+  # Install legacy shim header (packaging-added) for backward compatibility.
+  # Provides <magic_enum.hpp> forwarding to <magic_enum/magic_enum.hpp>.
+  install(
+    FILES "${PROJECT_SOURCE_DIR}/include/${PROJECT_NAME}.hpp"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  )
+
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
   set(CPACK_PACKAGE_DESCRIPTION "${PROJECT_DESCRIPTION}")
   if(NOT MAGIC_ENUM_USE_MODULES)
