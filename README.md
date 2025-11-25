@@ -1,3 +1,26 @@
+## magic_enum (jazzy) - 0.9.7-1
+
+The packages in the `magic_enum` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release --rosdistro jazzy magic_enum` on `Tue, 25 Nov 2025 05:42:08 -0000`
+
+The `magic_enum` package was released.
+
+Version of package(s) in repository `magic_enum`:
+
+- upstream repository: https://github.com/Neargye/magic_enum.git
+- release repository: https://github.com/ros2-gbp/magic_enum-release.git
+- rosdistro version: `0.9.6-1`
+- old version: `0.9.6-1`
+- new version: `0.9.7-1`
+
+Versions of tools used:
+
+- bloom version: `0.13.0`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## magic_enum (rolling) - 0.9.7-1
 
 The packages in the `magic_enum` repository were released into the `rolling` distro by running `/usr/bin/bloom-release --rosdistro rolling magic_enum` on `Thu, 12 Jun 2025 13:42:36 -0000`
