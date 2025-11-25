@@ -1,20 +1,37 @@
 module;
 
 #include <version>
+#if __has_include(<fmt/format.h>)
+#include <fmt/format.h>
+#endif
 #ifndef MAGIC_ENUM_USE_STD_MODULE
-#include <magic_enum_all.hpp>
+#if defined(__cpp_lib_format)
+#include <format>
+#endif
+#include <magic_enum/magic_enum_all.hpp>
 #endif
 
 export module magic_enum;
 
-#ifdef MAGIC_ENUM_USE_STD_MODULE
+#if defined(MAGIC_ENUM_USE_STD_MODULE)
 import std;
 
 extern "C++" {
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
-#include <magic_enum_all.hpp>
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 5244)
+#endif
+
+#include <magic_enum/magic_enum_all.hpp>
+
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 }
 #endif
 
@@ -72,5 +89,11 @@ namespace containers {
 #if defined(__cpp_lib_format)
 export namespace std {
     using std::formatter;
+}
+#endif
+
+#if defined(FMT_VERSION)
+export namespace fmt {
+    using fmt::formatter;
 }
 #endif
