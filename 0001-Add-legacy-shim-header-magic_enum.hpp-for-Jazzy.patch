@@ -1,7 +1,7 @@
-From 126d040e81061044c543c04ce7226682fe525078 Mon Sep 17 00:00:00 2001
+From eab2027d27a98fcc78d6c39df3c605b584ca8e97 Mon Sep 17 00:00:00 2001
 From: Tim Clephas <tim.clephas@nobleo.nl>
 Date: Tue, 25 Nov 2025 06:48:08 +0100
-Subject: [PATCH] Add legacy shim header <magic_enum.hpp> for Jazzy.
+Subject: [PATCH 1/2] Add legacy shim header <magic_enum.hpp> for Jazzy.
 
 ---
  CMakeLists.txt         | 7 +++++++

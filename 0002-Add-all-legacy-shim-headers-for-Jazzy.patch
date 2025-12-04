@@ -1,0 +1,130 @@
+From fab555c8f3450f0dff11c70f61ba07fd2ed9caf1 Mon Sep 17 00:00:00 2001
+From: Tim Clephas <tim.clephas@nobleo.nl>
+Date: Thu, 4 Dec 2025 13:53:41 +0100
+Subject: [PATCH 2/2] Add all legacy shim headers for Jazzy
+
+---
+ CMakeLists.txt                    | 11 ++++++++++-
+ include/magic_enum_all.hpp        |  4 ++++
+ include/magic_enum_containers.hpp |  4 ++++
+ include/magic_enum_flags.hpp      |  4 ++++
+ include/magic_enum_format.hpp     |  4 ++++
+ include/magic_enum_fuse.hpp       |  4 ++++
+ include/magic_enum_iostream.hpp   |  4 ++++
+ include/magic_enum_switch.hpp     |  4 ++++
+ include/magic_enum_utility.hpp    |  4 ++++
+ 9 files changed, 42 insertions(+), 1 deletion(-)
+ create mode 100644 include/magic_enum_all.hpp
+ create mode 100644 include/magic_enum_containers.hpp
+ create mode 100644 include/magic_enum_flags.hpp
+ create mode 100644 include/magic_enum_format.hpp
+ create mode 100644 include/magic_enum_fuse.hpp
+ create mode 100644 include/magic_enum_iostream.hpp
+ create mode 100644 include/magic_enum_switch.hpp
+ create mode 100644 include/magic_enum_utility.hpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 06628f6..cd062cd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -89,7 +89,16 @@ if(MAGIC_ENUM_OPT_INSTALL)
+   # Install legacy shim header (packaging-added) for backward compatibility.
+   # Provides <magic_enum.hpp> forwarding to <magic_enum/magic_enum.hpp>.
+   install(
+-    FILES "${PROJECT_SOURCE_DIR}/include/${PROJECT_NAME}.hpp"
++    FILES
++      "${PROJECT_SOURCE_DIR}/include/magic_enum.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_all.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_containers.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_flags.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_format.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_fuse.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_iostream.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_switch.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_utility.hpp"
+     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+   )
+ 
+diff --git a/include/magic_enum_all.hpp b/include/magic_enum_all.hpp
+new file mode 100644
+index 0000000..6483d9c
+--- /dev/null
++++ b/include/magic_enum_all.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_ALL_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_ALL_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_all.hpp>
++#endif
+diff --git a/include/magic_enum_containers.hpp b/include/magic_enum_containers.hpp
+new file mode 100644
+index 0000000..9398bd7
+--- /dev/null
++++ b/include/magic_enum_containers.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_CONTAINERS_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_CONTAINERS_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_containers.hpp>
++#endif
+diff --git a/include/magic_enum_flags.hpp b/include/magic_enum_flags.hpp
+new file mode 100644
+index 0000000..5272ab2
+--- /dev/null
++++ b/include/magic_enum_flags.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_FLAGS_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_FLAGS_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_flags.hpp>
++#endif
+diff --git a/include/magic_enum_format.hpp b/include/magic_enum_format.hpp
+new file mode 100644
+index 0000000..a3367f4
+--- /dev/null
++++ b/include/magic_enum_format.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_FORMAT_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_FORMAT_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_format.hpp>
++#endif
+diff --git a/include/magic_enum_fuse.hpp b/include/magic_enum_fuse.hpp
+new file mode 100644
+index 0000000..40a3581
+--- /dev/null
++++ b/include/magic_enum_fuse.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_FUSE_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_FUSE_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_fuse.hpp>
++#endif
+diff --git a/include/magic_enum_iostream.hpp b/include/magic_enum_iostream.hpp
+new file mode 100644
+index 0000000..96aecdb
+--- /dev/null
++++ b/include/magic_enum_iostream.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_IOSTREAM_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_IOSTREAM_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_iostream.hpp>
++#endif
+diff --git a/include/magic_enum_switch.hpp b/include/magic_enum_switch.hpp
+new file mode 100644
+index 0000000..6b21ff1
+--- /dev/null
++++ b/include/magic_enum_switch.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_SWITCH_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_SWITCH_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_switch.hpp>
++#endif
+diff --git a/include/magic_enum_utility.hpp b/include/magic_enum_utility.hpp
+new file mode 100644
+index 0000000..efc9d10
+--- /dev/null
++++ b/include/magic_enum_utility.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_UTILITY_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_UTILITY_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_utility.hpp>
++#endif
+-- 
+2.43.0
+
