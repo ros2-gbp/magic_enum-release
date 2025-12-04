@@ -86,22 +86,6 @@ if(MAGIC_ENUM_OPT_INSTALL)
     PATTERN "${PROJECT_INCLUDE_HEADER_PATTERN}"
   )
 
-  # Install legacy shim header (packaging-added) for backward compatibility.
-  # Provides <magic_enum.hpp> forwarding to <magic_enum/magic_enum.hpp>.
-  install(
-    FILES
-      "${PROJECT_SOURCE_DIR}/include/magic_enum.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_all.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_containers.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_flags.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_format.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_fuse.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_iostream.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_switch.hpp"
-      "${PROJECT_SOURCE_DIR}/include/magic_enum_utility.hpp"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-  )
-
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
   set(CPACK_PACKAGE_DESCRIPTION "${PROJECT_DESCRIPTION}")
   set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "all")
