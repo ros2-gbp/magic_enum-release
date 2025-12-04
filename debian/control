@@ -1,0 +1,12 @@
+Source: ros-jazzy-magic-enum
+Section: misc
+Priority: optional
+Maintainer: Neargye <neargye@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), cmake, ros-jazzy-ros-workspace
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-jazzy-magic-enum
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-jazzy-ros-workspace
+Description: Static reflection for enums (to string, from string, iteration) for modern C++, work with any enum type without any macro or boilerplate code
