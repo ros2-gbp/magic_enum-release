@@ -1,6 +1,6 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 
@@ -54,6 +55,13 @@ int main() {
     std::cout << "EatsFish|CanFly = " << magic_enum::enum_integer(f2.value()) << std::endl; // CanFly|EatsFish = 1074790400
   }
 
+  // String name to enum-flags value with custom separator.
+  auto f2_custom = magic_enum::enum_flags_cast<AnimalFlags>("EatsFish,CanFly", ',');
+  if (f2_custom.has_value()) {
+    // Custom separator for enum-flags name.
+    std::cout << magic_enum::enum_flags_name(f2_custom.value(), ',') << " = " << magic_enum::enum_integer(f2_custom.value()) << std::endl; // CanFly,EatsFish = 1074790400
+  }
+
   // Integer value to enum-flags value.
   auto f3 = magic_enum::enum_cast<AnimalFlags>(1073742848);
   if (f3.has_value()) {
@@ -83,7 +91,7 @@ int main() {
   std::cout << std::endl;
   // AnimalFlags values: HasClaws CanFly EatsFish Endangered
 
-  using namespace magic_enum::bitwise_operators; // out-of-the-box bitwise operators for all enums.
+  using namespace magic_enum::bitwise_operators; // Use with care; operators are enabled for all enums.
   // Support operators: ~, |, &, ^, |=, &=, ^=.
   AnimalFlags flag = AnimalFlags::HasClaws | AnimalFlags::CanFly;
   std::cout << flag << std::endl; // HasClaws|CanFly
