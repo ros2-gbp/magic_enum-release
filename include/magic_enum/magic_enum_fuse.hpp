@@ -5,11 +5,11 @@
 // | |  | | (_| | (_| | | (__  | |____| | | | |_| | | | | | | | |____|_|   |_|
 // |_|  |_|\__,_|\__, |_|\___| |______|_| |_|\__,_|_| |_| |_|  \_____|
 //                __/ | https://github.com/Neargye/magic_enum
-//               |___/  version 0.9.7
+//               |___/  version 0.9.8
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -39,10 +39,15 @@ namespace magic_enum {
 namespace detail {
 
 template <typename E>
+constexpr std::size_t fuse_bit_width() noexcept {
+  return log2((enum_count<E>() << 1) - 1);
+}
+
+template <typename E>
 constexpr optional<std::uintmax_t> fuse_one_enum(optional<std::uintmax_t> hash, E value) noexcept {
   if (hash) {
     if (const auto index = enum_index(value)) {
-      return (*hash << log2((enum_count<E>() << 1) - 1)) | *index;
+      return (*hash << fuse_bit_width<E>()) | *index;
     }
   }
   return {};
@@ -75,7 +80,7 @@ template <typename... Es>
 [[nodiscard]] constexpr auto enum_fuse(Es... values) noexcept {
   static_assert((std::is_enum_v<std::decay_t<Es>> && ...), "magic_enum::enum_fuse requires enum type.");
   static_assert(sizeof...(Es) >= 2, "magic_enum::enum_fuse requires at least 2 values.");
-  static_assert((detail::log2(enum_count<std::decay_t<Es>>() + 1) + ...) <= (sizeof(std::uintmax_t) * 8), "magic_enum::enum_fuse does not work for large enums");
+  static_assert((detail::fuse_bit_width<std::decay_t<Es>>() + ...) <= (sizeof(std::uintmax_t) * 8), "magic_enum::enum_fuse does not work for large enums");
 #if defined(MAGIC_ENUM_NO_TYPESAFE_ENUM_FUSE)
   const auto fuse = detail::fuse_enum<std::decay_t<Es>...>(values...);
 #else
