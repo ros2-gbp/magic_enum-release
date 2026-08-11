@@ -1,7 +1,6 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
-// Copyright (c) 2022 - 2023 Bela Schaum <schaumb@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -21,31 +20,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include <iostream>
+#ifdef MAGIC_ENUM_TEST_IMPORT_STD
+import std;
+#else
+#  include <iostream>
+#endif
 
-#include <magic_enum/magic_enum_containers.hpp>
+import magic_enum;
 
-enum class Color { RED = 1, GREEN = 2, BLUE = 4 };
-template <>
-struct magic_enum::customize::enum_range<Color> {
-  static constexpr bool is_flags = true;
-};
+enum class Color : int { RED = -10, BLUE = 0, GREEN = 10 };
 
 int main() {
+    for (const auto c : magic_enum::enum_values<Color>()) {
+        std::cout << magic_enum::enum_name(c) << '\n';
+    }
 
-  std::cout << std::boolalpha;
-  magic_enum::containers::set color_set {Color::RED, Color::GREEN, Color::BLUE};
-  std::cout << color_set.empty() << std::endl; // false
-  std::cout << color_set.size() << std::endl; // 3
+    constexpr auto result = magic_enum::enum_integer(Color::RED) + magic_enum::enum_integer(Color::GREEN);
+    if (result == magic_enum::enum_integer(Color::BLUE)) {
+        std::cout << "RED + GREEN == BLUE\n";
+    }
 
-  color_set.clear();
-  std::cout << color_set.empty() << std::endl; // true
-  std::cout << color_set.size() << std::endl; // 0
+    using magic_enum::iostream_operators::operator<<;
+    constexpr auto c = Color::GREEN;
+    std::cout << "Color: " << Color::RED << " " << c << '\n';
 
-  color_set.insert(Color::GREEN);
-  color_set.insert(Color::BLUE);
-  std::cout << color_set.empty() << std::endl; // false
-  std::cout << color_set.size() << std::endl; // 2
-
-  return 0;
+    return 0;
 }
