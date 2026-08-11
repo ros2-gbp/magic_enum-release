@@ -1,3 +1,26 @@
+## magic_enum (kilted) - 0.9.8-1
+
+The packages in the `magic_enum` repository were released into the `kilted` distro by running `/usr/bin/bloom-release --ros-distro kilted magic_enum -e` on `Tue, 11 Aug 2026 08:24:53 -0000`
+
+The `magic_enum` package was released.
+
+Version of package(s) in repository `magic_enum`:
+
+- upstream repository: https://github.com/Neargye/magic_enum.git
+- release repository: https://github.com/ros2-gbp/magic_enum-release.git
+- rosdistro version: `0.9.7-1`
+- old version: `0.9.7-1`
+- new version: `0.9.8-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.3`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## magic_enum (jazzy) - 0.9.7-3
 
 The packages in the `magic_enum` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release --rosdistro jazzy magic_enum` on `Thu, 04 Dec 2025 12:54:43 -0000`
