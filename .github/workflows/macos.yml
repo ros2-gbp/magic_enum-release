@@ -6,37 +6,40 @@ permissions: read-all
 
 jobs:
   build:
-    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
-        config:
-        - { os: macos-13 }
-        - { os: macos-14 }
-        - { os: macos-15 }
+        os:
+        - macos-15 # https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md#xcode
+        - macos-26 # https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md#xcode
+        compiler: [Apple Clang, GCC]
+        build_type: [Release, Debug]
 
-    name: "${{ matrix.config.os }}"
+    name: "${{ matrix.os }} / ${{ matrix.compiler }} / ${{ matrix.build_type }}"
+    runs-on: ${{ matrix.os }}
+
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
 
-    - name: Build Release
+    - name: Configure compiler
       run: |
-        rm -rf build
-        mkdir build
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release
-        cmake --build . -j 4 --config Release
-        ctest --output-on-failure -C Release
+        if [[ "${{ matrix.compiler }}" == "GCC" ]]; then
+          brew install gcc
+          gcc_bin="$(brew --prefix gcc)/bin"
+          gcc_version="$(brew list --versions gcc | awk '{print $2}')"
+          gcc_major="${gcc_version%%.*}"
+          echo "CC=${gcc_bin}/gcc-${gcc_major}" >> "${GITHUB_ENV}"
+          echo "CXX=${gcc_bin}/g++-${gcc_major}" >> "${GITHUB_ENV}"
+        else
+          echo "CC=clang" >> "${GITHUB_ENV}"
+          echo "CXX=clang++" >> "${GITHUB_ENV}"
+        fi
 
-    - name: Build Debug
-      run: |
-        rm -rf build
-        mkdir build
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Debug
-        cmake --build . -j 4 --config Debug
-        ctest --output-on-failure -C Debug
+    - name: Configure
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
-    - name: Bazel Test
-      working-directory: test
-      run: bazelisk test //... --config=ci
+    - name: Build
+      run: cmake --build build --parallel --config ${{ matrix.build_type }}
+
+    - name: Test
+      run: ctest --test-dir build --output-on-failure --no-tests=error -C ${{ matrix.build_type }}
