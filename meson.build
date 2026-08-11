@@ -1,7 +1,7 @@
 project(
     'magic_enum', ['cpp'],
     default_options: ['cpp_std=c++17'],
-    version: '0.9.7',
+    version: '0.9.8',
 )
 
 magic_enum_include = include_directories('include')
@@ -27,6 +27,4 @@ pkg.generate(
   extra_cflags: magic_enum_args,
 )
 
-if get_option('test')
-    subdir('test')
-endif
+subdir('test')
