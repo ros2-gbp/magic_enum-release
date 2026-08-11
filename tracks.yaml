@@ -125,8 +125,8 @@ tracks:
     - git-bloom-generate -y rosdynrpm --prefix release/:{ros_distro} :{ros_distro}
       -i :{release_inc} --require-os fedora rhel
     devel_branch: master
-    last_release: master
-    last_version: 0.9.7
+    last_release: v0.9.8
+    last_version: 0.9.8
     name: upstream
     patches: null
     release_inc: '1'
