@@ -1,37 +1,23 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
-//
-// Permission is hereby  granted, free of charge, to any  person obtaining a copy
-// of this software and associated  documentation files (the "Software"), to deal
-// in the Software  without restriction, including without  limitation the rights
-// to  use, copy,  modify, merge,  publish, distribute,  sublicense, and/or  sell
-// copies  of  the Software,  and  to  permit persons  to  whom  the Software  is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE  IS PROVIDED "AS  IS", WITHOUT WARRANTY  OF ANY KIND,  EXPRESS OR
-// IMPLIED,  INCLUDING BUT  NOT  LIMITED TO  THE  WARRANTIES OF  MERCHANTABILITY,
-// FITNESS FOR  A PARTICULAR PURPOSE AND  NONINFRINGEMENT. IN NO EVENT  SHALL THE
-// AUTHORS  OR COPYRIGHT  HOLDERS  BE  LIABLE FOR  ANY  CLAIM,  DAMAGES OR  OTHER
-// LIABILITY, WHETHER IN AN ACTION OF  CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 
-#define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
+#include <new>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
 
 #define MAGIC_ENUM_USING_ALIAS_STRING_VIEW using string_view = std::wstring_view;
 #define MAGIC_ENUM_USING_ALIAS_STRING      using string      = std::wstring;
 #include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_containers.hpp>
 #include <magic_enum/magic_enum_iostream.hpp>
+
+#include "test_helpers.hpp"
 
 #include <array>
 #include <cctype>
-#include <string_view>
 #include <sstream>
+#include <string_view>
 
 enum class Color { RED = -12, GREEN = 7, BLUE = 15 };
 template <>
@@ -45,11 +31,12 @@ constexpr magic_enum::customize::customize_t magic_enum::customize::enum_name<Co
 }
 
 using namespace magic_enum;
+using namespace magic_enum_tests;
 
 static_assert(is_magic_enum_supported, "magic_enum: Unsupported compiler (https://github.com/Neargye/magic_enum#compiler-compatibility).");
 
 TEST_CASE("enum_cast") {
-  SECTION("string") {
+  SUBCASE("string") {
     constexpr auto cr = enum_cast<Color>(L"red");
     REQUIRE(cr.value() == Color::RED);
     REQUIRE(enum_cast<Color&>(L"GREEN").value() == Color::GREEN);
@@ -57,7 +44,7 @@ TEST_CASE("enum_cast") {
     REQUIRE_FALSE(enum_cast<Color>(L"None").has_value());
   }
 
-  SECTION("integer") {
+  SUBCASE("integer") {
     Color cm[3] = {Color::RED, Color::GREEN, Color::BLUE};
     constexpr auto cr = enum_cast<Color>(-12);
     REQUIRE(cr.value() == Color::RED);
@@ -80,7 +67,7 @@ TEST_CASE("enum_count") {
 }
 
 TEST_CASE("enum_name") {
-  SECTION("automatic storage") {
+  SUBCASE("automatic storage") {
     constexpr Color cr = Color::RED;
     constexpr auto cr_name = enum_name(cr);
     Color cm[3] = {Color::RED, Color::GREEN, Color::BLUE};
@@ -92,7 +79,7 @@ TEST_CASE("enum_name") {
     REQUIRE(enum_name<as_flags<false>>(static_cast<Color>(0)).empty());
   }
 
-  SECTION("static storage") {
+  SUBCASE("static storage") {
     constexpr Color cr = Color::RED;
     constexpr auto cr_name = enum_name<cr>();
     constexpr Color cm[3] = {Color::RED, Color::GREEN, Color::BLUE};
@@ -116,32 +103,60 @@ TEST_CASE("enum_entries") {
   REQUIRE(s1 == std::array<std::pair<Color, std::wstring_view>, 3>{{{Color::RED, L"red"}, {Color::GREEN, L"GREEN"}, {Color::BLUE, L"BLUE"}}});
 }
 
-TEST_CASE("ostream_operators") {
-  auto test_ostream = [](auto e, std::wstring name) {
-    using namespace magic_enum::ostream_operators;
-    std::wstringstream ss;
-    ss << e;
-    REQUIRE(ss);
-    REQUIRE(ss.str() == name);
-  };
+TEST_CASE("wstring_view lifetime and null termination") {
+  std::wstring_view static_name{};
+  static_name = enum_name<Color::BLUE>();
+  require_null_terminated(static_name, L"BLUE");
 
-  test_ostream(std::make_optional(Color::RED), L"red");
-  test_ostream(Color::GREEN, L"GREEN");
-  test_ostream(Color::BLUE, L"BLUE");
-  test_ostream(static_cast<Color>(0), L"0");
-  test_ostream(std::make_optional(static_cast<Color>(0)), L"0");
+  std::wstring_view customized_name{};
+  customized_name = enum_name(Color::RED);
+  require_null_terminated(customized_name, L"red");
+
+  std::wstring_view invalid_name{};
+  invalid_name = enum_name(static_cast<Color>(0));
+  require_null_terminated(invalid_name, L"");
+
+  std::wstring_view type_name{};
+  type_name = enum_type_name<Color>();
+  require_null_terminated(type_name, L"Color");
+
+  std::wstring_view array_name{};
+  array_name = enum_names<Color>()[1];
+  require_null_terminated(array_name, L"GREEN");
+
+  std::wstring_view entry_name{};
+  entry_name = enum_entries<Color>()[2].second;
+  require_null_terminated(entry_name, L"BLUE");
+
+  for (std::wstring_view name : enum_names<Color>()) {
+    require_null_terminated(name);
+  }
+  for (const auto& entry : enum_entries<Color>()) {
+    require_null_terminated(entry.second);
+  }
+}
+
+TEST_CASE("ostream_operators") {
+  require_ostream(std::make_optional(Color::RED), L"red");
+  require_ostream(Color::GREEN, L"GREEN");
+  require_ostream(Color::BLUE, L"BLUE");
+  require_ostream(static_cast<Color>(0), L"0");
+  require_ostream(std::make_optional(static_cast<Color>(0)), L"0");
 }
 
 TEST_CASE("istream_operators") {
-  auto test_istream = [](const auto e, std::wstring name) {
-    using namespace magic_enum::istream_operators;
-    std::wistringstream ss(name);
-    std::decay_t<decltype(e)> v;
-    ss >> v;
-    REQUIRE(ss);
-    REQUIRE(v == e);
-  };
+  require_istream(Color::GREEN, L"GREEN");
+  require_istream(Color::BLUE, L"BLUE");
+}
 
-  test_istream(Color::GREEN, L"GREEN");
-  test_istream(Color::BLUE, L"BLUE");
+TEST_CASE("containers_bitset_iostream") {
+  magic_enum::containers::bitset<Color> bits {Color::RED, Color::BLUE};
+  std::wstringstream output;
+  output << bits;
+  REQUIRE(output.str() == L"red|BLUE");
+
+  std::wstringstream input {L"GREEN"};
+  input >> bits;
+  const magic_enum::containers::bitset<Color> expected {Color::GREEN};
+  REQUIRE(bits == expected);
 }
