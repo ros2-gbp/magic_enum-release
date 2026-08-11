@@ -1,4 +1,4 @@
-From fab555c8f3450f0dff11c70f61ba07fd2ed9caf1 Mon Sep 17 00:00:00 2001
+From 12f640417984431ed644872937f17968a39bbf9d Mon Sep 17 00:00:00 2001
 From: Tim Clephas <tim.clephas@nobleo.nl>
 Date: Thu, 4 Dec 2025 13:53:41 +0100
 Subject: [PATCH 2/2] Add all legacy shim headers for Jazzy
