@@ -218,7 +218,7 @@ tracks:
     patches: null
     release_inc: '1'
     release_repo_url: null
-    release_tag: master
+    release_tag: v:{version}
     ros_distro: rolling
     vcs_type: git
     vcs_uri: https://github.com/Neargye/magic_enum.git
