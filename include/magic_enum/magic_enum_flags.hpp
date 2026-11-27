@@ -5,11 +5,11 @@
 // | |  | | (_| | (_| | | (__  | |____| | | | |_| | | | | | | | |____|_|   |_|
 // |_|  |_|\__,_|\__, |_|\___| |______|_| |_|\__,_|_| |_| |_|  \_____|
 //                __/ | https://github.com/Neargye/magic_enum
-//               |___/  version 0.9.8
+//               |___/  version 0.10.0
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -33,187 +33,211 @@
 #define NEARGYE_MAGIC_ENUM_FLAGS_HPP
 
 #include "magic_enum.hpp"
+#if MAGIC_ENUM_VERSION_MAJOR != 0 || MAGIC_ENUM_VERSION_MINOR != 10 || MAGIC_ENUM_VERSION_PATCH != 0
+#  error "magic_enum headers of different versions are mixed. Check the include paths."
+#endif
 
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#elif defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__clang__)
 #  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized" // May be used uninitialized 'return {};'.
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized" // False positive on `return {};` for optional.
 #elif defined(_MSC_VER)
 #  pragma warning(push)
+#  pragma warning(disable : 4459 6244) // Local names can match global names in user code.
 #endif
 
 namespace magic_enum {
 
 namespace detail {
 
-template <typename E, enum_subtype S, typename U = std::underlying_type_t<E>>
-constexpr U values_ors() noexcept {
-  static_assert(S == enum_subtype::flags, "magic_enum::detail::values_ors requires valid subtype.");
-
+template <typename E>
+MAGIC_ENUM_CONSTEVAL auto values_ors() noexcept {
+  using U = make_unsigned_t<std::underlying_type_t<E>>;
   auto ors = U{0};
-  for (std::size_t i = 0; i < count_v<E, S>; ++i) {
-    ors |= static_cast<U>(values_v<E, S>[i]);
+  for (const auto value : values_v<E, enum_subtype::flags>) {
+    ors |= static_cast<U>(value);
   }
 
   return ors;
 }
 
-} // namespace magic_enum::detail
-
-// Returns name from enum-flags value.
-// If enum-flags value does not have name or value out of range, returns empty string.
 template <typename E>
-[[nodiscard]] auto enum_flags_name(E value, char_type sep = static_cast<char_type>('|')) -> detail::enable_if_t<E, string> {
-  using D = std::decay_t<E>;
-  using U = underlying_type_t<D>;
-  constexpr auto S = detail::enum_subtype::flags;
-  static_assert(detail::is_reflected_v<D, S>, "magic_enum requires enum implementation and valid max and min.");
-
-  string name;
-  auto check_value = U{0};
-  for (std::size_t i = 0; i < detail::count_v<D, S>; ++i) {
-    if (const auto v = static_cast<U>(enum_value<D, S>(i)); (static_cast<U>(value) & v) != 0) {
-      if (const auto n = detail::names_v<D, S>[i]; !n.empty()) {
-        check_value |= v;
-        if (!name.empty()) {
-          name.append(1, sep);
-        }
-        name.append(n.data(), n.size());
-      } else {
-        return {}; // Value out of range.
-      }
+MAGIC_ENUM_CONSTEVAL std::size_t zero_index() noexcept {
+  constexpr auto& values = values_v<E, enum_subtype::flags>;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (enum_value_equal(values[i], 0)) {
+      return i;
     }
   }
 
-  if (check_value != 0 && check_value == static_cast<U>(value)) {
+  return values.size();
+}
+
+// Returns true if the integer is a valid flag combination. Zero is valid only when its name is reflected.
+template <typename E, typename I>
+constexpr bool is_flags_mask([[maybe_unused]] I value) noexcept {
+  using U = std::underlying_type_t<E>;
+  using V = make_unsigned_t<U>;
+  if constexpr (count_v<E, enum_subtype::flags> == 0) {
+    return false;
+  } else {
+    const auto flag_value = static_cast<V>(static_cast<U>(value));
+    constexpr auto mask = values_ors<E>();
+    constexpr bool named_zero = zero_index<E>() < count_v<E, enum_subtype::flags>;
+    return in_underlying_range<E>(value) && (flag_value & static_cast<V>(~mask)) == V{0} && (flag_value != V{0} || named_zero);
+  }
+}
+
+// Parses separated names into result. Returns false for an empty string or an unknown name.
+template <typename E, typename BinaryPredicate>
+constexpr bool parse_flags([[maybe_unused]] string_view value, [[maybe_unused]] char_type sep, [[maybe_unused]] BinaryPredicate& p, [[maybe_unused]] make_unsigned_t<std::underlying_type_t<E>>& result) {
+  using V = make_unsigned_t<std::underlying_type_t<E>>;
+  constexpr auto S = enum_subtype::flags;
+  if constexpr (count_v<E, S> == 0) {
+    return false;
+  } else {
+    if (value.empty()) {
+      return false; // A named zero parses to zero, so the result cannot mark an empty string.
+    }
+    // Avoid GCC C++26 wrong-code with find/remove_prefix, see #467.
+    for (std::size_t first = 0; first < value.size();) {
+      auto last = first;
+      while (last < value.size() && value[last] != sep) {
+        ++last;
+      }
+      const auto s = value.substr(first, last - first);
+#if defined(MAGIC_ENUM_ENABLE_HASH)
+      if (const auto flag = enum_cast<E, S, BinaryPredicate&>(s, p)) {
+        result |= static_cast<V>(*flag);
+      } else {
+        return false;
+      }
+#else
+      if (const auto i = name_index<E, S>(s, p); i < count_v<E, S>) {
+        result |= static_cast<V>(values_v<E, S>[i]);
+      } else {
+        return false;
+      }
+#endif
+      first = (last < value.size()) ? last + 1 : last;
+    }
+    return true;
+  }
+}
+
+} // namespace magic_enum::detail
+
+// Returns flag names joined by sep, or the reflected zero name. Unknown bits or zero without a reflected name give an empty string.
+template <typename E, typename String = string>
+[[nodiscard]] constexpr auto enum_flags_name(E value, char_type sep = char_type{'|'}) -> detail::enable_if_t<E, String> {
+  using D = std::decay_t<E>;
+  using U = detail::make_unsigned_t<underlying_type_t<D>>;
+  constexpr auto S = detail::enum_subtype::flags;
+  static_assert(detail::is_reflected_v<D, S>, "magic_enum::enum_flags_name requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
+  static_assert(std::is_same_v<typename String::value_type, char_type>, "magic_enum::enum_flags_name requires String::value_type to be magic_enum::char_type.");
+
+  const auto flag_value = static_cast<U>(value);
+  String name;
+  if (flag_value == U{0}) {
+    // The zero name never joins a nonzero mask.
+    constexpr auto z = detail::zero_index<D>();
+    if constexpr (z < detail::count_v<D, S>) {
+      const auto n = detail::names_v<D, S>[z];
+      name.append(n.data(), n.size());
+    }
     return name;
+  }
+
+  auto check_value = U{0};
+  for (std::size_t i = 0; i < detail::count_v<D, S>; ++i) {
+    if (const auto v = static_cast<U>(detail::values_v<D, S>[i]); (flag_value & v) != U{0}) {
+      check_value |= v;
+      if (!name.empty()) {
+        name.append(1, sep);
+      }
+      const auto n = detail::names_v<D, S>[i];
+      name.append(n.data(), n.size());
+    }
+  }
+
+  if (check_value != flag_value) {
+    name.clear(); // Invalid value or out of range.
+  }
+  return name;
+}
+
+// Returns the flag combination matching the integer, or an empty optional.
+template <typename E, typename I = underlying_type_t<std::decay_t<E>>, std::enable_if_t<detail::is_integer_input_v<I>, int> = 0>
+[[nodiscard]] constexpr auto enum_flags_cast(I value) noexcept -> detail::enable_if_t<E, optional<std::decay_t<E>>> {
+  using D = std::decay_t<E>;
+  static_assert(detail::is_reflected_v<D, detail::enum_subtype::flags>, "magic_enum::enum_flags_cast requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
+
+  if (detail::is_flags_mask<D>(value)) {
+    return static_cast<D>(static_cast<underlying_type_t<D>>(value));
   }
   return {}; // Invalid value or out of range.
 }
 
-// Returns enum-flags value from integer value.
-// Returns optional with enum-flags value.
-template <typename E>
-[[nodiscard]] constexpr auto enum_flags_cast(underlying_type_t<E> value) noexcept -> detail::enable_if_t<E, optional<std::decay_t<E>>> {
-  using D = std::decay_t<E>;
-  using U = underlying_type_t<D>;
-  constexpr auto S = detail::enum_subtype::flags;
-  static_assert(detail::is_reflected_v<D, S>, "magic_enum requires enum implementation and valid max and min.");
-
-  if constexpr (detail::count_v<D, S> == 0) {
-    static_cast<void>(value);
-    return {}; // Empty enum.
-  } else {
-    if constexpr (detail::is_sparse_v<D, S>) {
-      auto check_value = U{0};
-      for (std::size_t i = 0; i < detail::count_v<D, S>; ++i) {
-        if (const auto v = static_cast<U>(enum_value<D, S>(i)); (value & v) != 0) {
-          check_value |= v;
-        }
-      }
-
-      if (check_value != 0 && check_value == value) {
-        return static_cast<D>(value);
-      }
-    } else {
-      constexpr auto min = detail::min_v<D, S>;
-      constexpr auto max = detail::values_ors<D, S>();
-
-      if (value >= min && value <= max) {
-        return static_cast<D>(value);
-      }
-    }
-    return {}; // Invalid value or out of range.
-  }
-}
-
-// Returns enum-flags value from name.
-// Returns optional with enum-flags value.
+// Returns the flag combination matching the separated names, or an empty optional.
 template <typename E, typename BinaryPredicate = std::equal_to<>>
-[[nodiscard]] constexpr auto enum_flags_cast(string_view value, [[maybe_unused]] char_type sep = static_cast<char_type>('|'), [[maybe_unused]] BinaryPredicate p = {}) noexcept(detail::is_nothrow_invocable_v<BinaryPredicate>) -> detail::enable_if_t<E, optional<std::decay_t<E>>, BinaryPredicate> {
+[[nodiscard]] constexpr auto enum_flags_cast(string_view value, char_type sep = char_type{'|'}, BinaryPredicate p = {}) noexcept(detail::is_nothrow_invocable_v<BinaryPredicate>) -> detail::enable_if_t<E, optional<std::decay_t<E>>, BinaryPredicate> {
   using D = std::decay_t<E>;
-  using U = underlying_type_t<D>;
-  constexpr auto S = detail::enum_subtype::flags;
-  static_assert(detail::is_reflected_v<D, S>, "magic_enum requires enum implementation and valid max and min.");
+  static_assert(detail::is_reflected_v<D, detail::enum_subtype::flags>, "magic_enum::enum_flags_cast requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
 
-  if constexpr (detail::count_v<D, S> == 0) {
-    static_cast<void>(value);
-    return {}; // Empty enum.
-  } else {
-    auto result = U{0};
-    while (!value.empty()) {
-      const auto d = detail::find(value, sep);
-      const auto s = (d == string_view::npos) ? value : value.substr(0, d);
-      auto f = U{0};
-      for (std::size_t i = 0; i < detail::count_v<D, S>; ++i) {
-        if (detail::cmp_equal(s, detail::names_v<D, S>[i], p)) {
-          f = static_cast<U>(enum_value<D, S>(i));
-          result |= f;
-          break;
-        }
-      }
-      if (f == U{0}) {
-        return {}; // Invalid value or out of range.
-      }
-      value.remove_prefix((d == string_view::npos) ? value.size() : d + 1);
-    }
-
-    if (result != U{0}) {
-      return static_cast<D>(result);
-    }
-    return {}; // Invalid value or out of range.
+  if (auto result = detail::make_unsigned_t<underlying_type_t<D>>{0}; detail::parse_flags<D>(value, sep, p, result)) {
+    return static_cast<D>(result);
   }
+  return {}; // Invalid value or out of range.
 }
 
-// Returns true if enum-flags contains value with such value.
+// Returns true if the value is a valid flag combination. Zero is valid only when its name is reflected.
 template <typename E>
 [[nodiscard]] constexpr auto enum_flags_contains(E value) noexcept -> detail::enable_if_t<E, bool> {
   using D = std::decay_t<E>;
-  using U = underlying_type_t<D>;
+  static_assert(detail::is_reflected_v<D, detail::enum_subtype::flags>, "magic_enum::enum_flags_contains requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
 
-  return static_cast<bool>(enum_flags_cast<D>(static_cast<U>(value)));
+  return detail::is_flags_mask<D>(static_cast<underlying_type_t<D>>(value));
 }
 
-// Returns true if enum-flags contains value with such integer value.
-template <typename E>
-[[nodiscard]] constexpr auto enum_flags_contains(underlying_type_t<E> value) noexcept -> detail::enable_if_t<E, bool> {
+// Returns true if the integer is a valid flag combination. Zero is valid only when its name is reflected.
+// The enum value overload handles arguments of type E.
+template <typename E, typename I, std::enable_if_t<detail::is_integer_input_v<I> && !std::is_same_v<I, std::decay_t<E>>, int> = 0>
+[[nodiscard]] constexpr auto enum_flags_contains(I value) noexcept -> detail::enable_if_t<E, bool> {
   using D = std::decay_t<E>;
+  static_assert(detail::is_reflected_v<D, detail::enum_subtype::flags>, "magic_enum::enum_flags_contains requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
 
-  return static_cast<bool>(enum_flags_cast<D>(value));
+  return detail::is_flags_mask<D>(value);
 }
 
-// Returns true if enum-flags contains enumerator with such name.
+// Returns true if the names form a valid flag combination.
 template <typename E, typename BinaryPredicate = std::equal_to<>>
-[[nodiscard]] constexpr auto enum_flags_contains(string_view value, char_type sep = static_cast<char_type>('|'), BinaryPredicate p = {}) noexcept(detail::is_nothrow_invocable_v<BinaryPredicate>) -> detail::enable_if_t<E, bool, BinaryPredicate> {
+[[nodiscard]] constexpr auto enum_flags_contains(string_view value, char_type sep = char_type{'|'}, BinaryPredicate p = {}) noexcept(detail::is_nothrow_invocable_v<BinaryPredicate>) -> detail::enable_if_t<E, bool, BinaryPredicate> {
   using D = std::decay_t<E>;
+  static_assert(detail::is_reflected_v<D, detail::enum_subtype::flags>, "magic_enum::enum_flags_contains requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
 
-  return static_cast<bool>(enum_flags_cast<D>(value, sep, std::move(p)));
+  auto result = detail::make_unsigned_t<underlying_type_t<D>>{0};
+  return detail::parse_flags<D>(value, sep, p, result);
 }
 
-// Returns true if `flags set` contains `flag`.
-// Note: If `flag` equals 0, it returns false, as 0 is not a flag.
+// Returns true if flag is nonzero and all its bits are set in flags.
 template <typename E>
-constexpr auto enum_flags_test(E flags, E flag) noexcept -> detail::enable_if_t<E, bool> {
-  using U = underlying_type_t<E>;
+[[nodiscard]] constexpr auto enum_flags_test(E flags, E flag) noexcept -> detail::enable_if_t<E, bool> {
+  using U = detail::make_unsigned_t<underlying_type_t<E>>;
 
-  return static_cast<U>(flag) && ((static_cast<U>(flags) & static_cast<U>(flag)) == static_cast<U>(flag));
+  const auto flag_value = static_cast<U>(flag);
+  return flag_value != U{0} && (static_cast<U>(flags) & flag_value) == flag_value;
 }
 
-// Returns true if `lhs flags set` and `rhs flags set` have common flags.
-// Note: If `lhs flags set` or `rhs flags set` equals 0, it returns false, as 0 is not a flag, and therfore cannot have any matching flag.
+// Returns true if lhs and rhs share at least one set bit.
 template <typename E>
-constexpr auto enum_flags_test_any(E lhs, E rhs) noexcept -> detail::enable_if_t<E, bool> {
-  using U = underlying_type_t<E>;
+[[nodiscard]] constexpr auto enum_flags_test_any(E lhs, E rhs) noexcept -> detail::enable_if_t<E, bool> {
+  using U = detail::make_unsigned_t<underlying_type_t<E>>;
 
-  return (static_cast<U>(lhs) & static_cast<U>(rhs)) != 0;
+  return (static_cast<U>(lhs) & static_cast<U>(rhs)) != U{0};
 }
 
 } // namespace magic_enum
 
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__clang__)
 #  pragma GCC diagnostic pop
 #elif defined(_MSC_VER)
 #  pragma warning(pop)

@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format2.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 
-<!-- A package.xml in the root of a cmake projects allows it to be built using catkin or colcon (the ROS build system) -->
+<!-- A package.xml in the root of a CMake project lets catkin or colcon (the ROS build tools) build it. -->
 
 <package format="2">
   <name>magic_enum</name>
-  <version>0.9.8</version>
+  <version>0.10.0</version>
   <description>
     Static reflection for enums (to string, from string, iteration) for modern C++,
     work with any enum type without any macro or boilerplate code
