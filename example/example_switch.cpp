@@ -1,6 +1,6 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 // Copyright (c) 2022 - 2023 Bela Schaum <schaumb@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
@@ -21,7 +21,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <cassert>
 #include <iostream>
+#include <optional>
 
 #define MAGIC_ENUM_ENABLE_HASH
 #include <magic_enum/magic_enum_switch.hpp>
@@ -55,7 +57,7 @@ int main() {
 
   magic_enum::enum_switch(lambda, c); // prints "override"
 
-  // with object, explicit enum type
+  // Callable object with cases for selected values.
   auto switcher1 = overloaded{
     [] (magic_enum::enum_constant<Color::BLUE>) {
       std::cout << "Blue" << std::endl;
@@ -69,7 +71,7 @@ int main() {
   magic_enum::enum_switch(switcher1, Color::BLUE); // prints "Blue"
   magic_enum::enum_switch(switcher1, Color::RED); // prints "Red"
 
-  // explicit result type
+  // Explicit result type.
   auto switcher2 = overloaded{
     [] (magic_enum::enum_constant<Color::GREEN>) {
       return "called with green argument";
@@ -86,7 +88,7 @@ int main() {
   auto empty = magic_enum::enum_switch<std::string>(switcher2, static_cast<Color>(-3)); // returns an empty string
   assert(empty.empty());
 
-  // result with default object
+  // Fallback result for an unmatched value.
   std::cout << magic_enum::enum_switch<std::string>(switcher2, static_cast<Color>(-3), "unrecognized") << std::endl; // prints "unrecognized"
 
   auto switcher3 = overloaded{
@@ -99,7 +101,7 @@ int main() {
   };
 
   std::cout << std::boolalpha;
-  std::cout << magic_enum::enum_switch(switcher3, Color::GREEN, std::make_optional("cica")).value() << std::endl; // prints default: "cica"
+  std::cout << magic_enum::enum_switch(switcher3, Color::GREEN, std::make_optional("cica")).value() << std::endl; // prints "cica"
   std::cout << magic_enum::enum_switch(switcher3, Color::RED, std::make_optional("cica")).value() << std::endl; // prints: "red result"
   std::cout << magic_enum::enum_switch(switcher3, Color::BLUE, std::make_optional("cica")).has_value() << std::endl; // prints: false
 
