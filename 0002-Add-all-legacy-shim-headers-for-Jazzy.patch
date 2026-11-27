@@ -1,11 +1,12 @@
-From 12f640417984431ed644872937f17968a39bbf9d Mon Sep 17 00:00:00 2001
+From a0822c2f15c4d3a74bd7a403f25056c02b3e9bfd Mon Sep 17 00:00:00 2001
 From: Tim Clephas <tim.clephas@nobleo.nl>
 Date: Thu, 4 Dec 2025 13:53:41 +0100
-Subject: [PATCH 2/2] Add all legacy shim headers for Jazzy
+Subject: [PATCH 2/3] Add all legacy shim headers for Jazzy
 
 ---
- CMakeLists.txt                    | 11 ++++++++++-
+ CMakeLists.txt                    | 12 +++++++++++-
  include/magic_enum_all.hpp        |  4 ++++
+ include/magic_enum_bitwise.hpp    |  4 ++++
  include/magic_enum_containers.hpp |  4 ++++
  include/magic_enum_flags.hpp      |  4 ++++
  include/magic_enum_format.hpp     |  4 ++++
@@ -13,8 +14,9 @@ Subject: [PATCH 2/2] Add all legacy shim headers for Jazzy
  include/magic_enum_iostream.hpp   |  4 ++++
  include/magic_enum_switch.hpp     |  4 ++++
  include/magic_enum_utility.hpp    |  4 ++++
- 9 files changed, 42 insertions(+), 1 deletion(-)
+ 10 files changed, 47 insertions(+), 1 deletion(-)
  create mode 100644 include/magic_enum_all.hpp
+ create mode 100644 include/magic_enum_bitwise.hpp
  create mode 100644 include/magic_enum_containers.hpp
  create mode 100644 include/magic_enum_flags.hpp
  create mode 100644 include/magic_enum_format.hpp
@@ -24,10 +26,10 @@ Subject: [PATCH 2/2] Add all legacy shim headers for Jazzy
  create mode 100644 include/magic_enum_utility.hpp
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 06628f6..cd062cd 100644
+index 5d19907..75e186f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -89,7 +89,16 @@ if(MAGIC_ENUM_OPT_INSTALL)
+@@ -244,7 +244,17 @@ if(MAGIC_ENUM_OPT_INSTALL)
    # Install legacy shim header (packaging-added) for backward compatibility.
    # Provides <magic_enum.hpp> forwarding to <magic_enum/magic_enum.hpp>.
    install(
@@ -35,6 +37,7 @@ index 06628f6..cd062cd 100644
 +    FILES
 +      "${PROJECT_SOURCE_DIR}/include/magic_enum.hpp"
 +      "${PROJECT_SOURCE_DIR}/include/magic_enum_all.hpp"
++      "${PROJECT_SOURCE_DIR}/include/magic_enum_bitwise.hpp"
 +      "${PROJECT_SOURCE_DIR}/include/magic_enum_containers.hpp"
 +      "${PROJECT_SOURCE_DIR}/include/magic_enum_flags.hpp"
 +      "${PROJECT_SOURCE_DIR}/include/magic_enum_format.hpp"
@@ -54,6 +57,16 @@ index 0000000..6483d9c
 +#ifndef MAGIC_ENUM_ALL_LEGACY_ROOT_HEADER
 +#define MAGIC_ENUM_ALL_LEGACY_ROOT_HEADER
 +#include <magic_enum/magic_enum_all.hpp>
++#endif
+diff --git a/include/magic_enum_bitwise.hpp b/include/magic_enum_bitwise.hpp
+new file mode 100644
+index 0000000..bab7fbd
+--- /dev/null
++++ b/include/magic_enum_bitwise.hpp
+@@ -0,0 +1,4 @@
++#ifndef MAGIC_ENUM_BITWISE_LEGACY_ROOT_HEADER
++#define MAGIC_ENUM_BITWISE_LEGACY_ROOT_HEADER
++#include <magic_enum/magic_enum_bitwise.hpp>
 +#endif
 diff --git a/include/magic_enum_containers.hpp b/include/magic_enum_containers.hpp
 new file mode 100644

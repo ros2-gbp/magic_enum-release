@@ -1,0 +1,47 @@
+From 34fbcd9cd7d47299138f5169bf43b58e903e485e Mon Sep 17 00:00:00 2001
+From: Tim Clephas <tim.clephas@nobleo.nl>
+Date: Fri, 27 Nov 2026 09:43:33 +0100
+Subject: [PATCH 3/3] Keep bitwise operators in <magic_enum/magic_enum.hpp> for
+ Jazzy
+
+magic_enum 0.10.0 moved magic_enum::bitwise_operators to
+magic_enum_bitwise.hpp. Include it from magic_enum.hpp so code written
+against 0.9.x (e.g. the sfg-autonomous-systems packages) keeps compiling.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/magic_enum/magic_enum.hpp | 4 ++++
+ test/test_operators.cpp           | 4 ----
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/include/magic_enum/magic_enum.hpp b/include/magic_enum/magic_enum.hpp
+index 594ad68..35635ac 100644
+--- a/include/magic_enum/magic_enum.hpp
++++ b/include/magic_enum/magic_enum.hpp
+@@ -2456,4 +2456,8 @@ inline constexpr auto as_common = AsCommon ? detail::enum_subtype::common : deta
+ #undef MAGIC_ENUM_SIGNATURE
+ #undef MAGIC_ENUM_DETAIL_USE_STD_REFLECTION
+ 
++// Jazzy packaging: up to 0.9.8, magic_enum.hpp provided magic_enum::bitwise_operators.
++// Keep providing them so existing Jazzy code keeps compiling.
++#include "magic_enum_bitwise.hpp"
++
+ #endif // NEARGYE_MAGIC_ENUM_HPP
+diff --git a/test/test_operators.cpp b/test/test_operators.cpp
+index c90c9e9..71b08ca 100644
+--- a/test/test_operators.cpp
++++ b/test/test_operators.cpp
+@@ -8,10 +8,6 @@
+ #include "test_enums.hpp"
+ #include "test_flags_enums.hpp"
+ 
+-#if defined(NEARGYE_MAGIC_ENUM_BITWISE_HPP)
+-#  error magic_enum.hpp must not provide bitwise operators.
+-#endif
+-
+ #include <magic_enum/magic_enum_all.hpp>
+ 
+ #if !defined(NEARGYE_MAGIC_ENUM_BITWISE_HPP)
+-- 
+2.43.0
+
