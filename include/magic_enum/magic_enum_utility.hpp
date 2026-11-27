@@ -9,7 +9,7 @@
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -34,37 +34,30 @@
 
 #include "magic_enum.hpp"
 
-#ifndef MAGIC_ENUM_USE_STD_MODULE
-#  include <tuple>
-#endif
-
 namespace magic_enum {
 
 namespace detail {
 
-template <typename E, enum_subtype S, typename F, std::size_t J>
-using enum_for_each_result_t = std::decay_t<std::invoke_result_t<F&, enum_constant<values_v<E, S>[J]>>>;
-
-template <typename E, enum_subtype S, typename F, std::size_t... J>
-constexpr auto for_each(F&& f, std::index_sequence<J...>) {
-  constexpr bool has_void_return = (std::is_void_v<std::invoke_result_t<F&, enum_constant<values_v<E, S>[J]>>> || ...);
-  constexpr bool all_same_return = (std::is_same_v<std::invoke_result_t<F&, enum_constant<values_v<E, S>[0]>>, std::invoke_result_t<F&, enum_constant<values_v<E, S>[J]>>> && ...);
+template <typename E, enum_subtype S, typename F, std::size_t... I>
+constexpr auto for_each(F&& f, std::index_sequence<I...>) {
+  constexpr bool has_void_return = (std::is_void_v<std::invoke_result_t<F, enum_constant<values_v<E, S>[I]>>> || ...);
+  constexpr bool all_same_return = (std::is_same_v<std::invoke_result_t<F, enum_constant<values_v<E, S>[0]>>, std::invoke_result_t<F, enum_constant<values_v<E, S>[I]>>> && ...);
 
   if constexpr (has_void_return) {
-    (f(enum_constant<values_v<E, S>[J]>{}), ...);
+    (f(enum_constant<values_v<E, S>[I]>{}), ...);
   } else if constexpr (all_same_return) {
-    return std::array<enum_for_each_result_t<E, S, F, 0>, sizeof...(J)>{{f(enum_constant<values_v<E, S>[J]>{})...}};
+    return std::array{f(enum_constant<values_v<E, S>[I]>{})...};
   } else {
-    return std::tuple<enum_for_each_result_t<E, S, F, J>...>{f(enum_constant<values_v<E, S>[J]>{})...};
+    return std::tuple{f(enum_constant<values_v<E, S>[I]>{})...};
   }
 }
 
-template <typename E, enum_subtype S, typename F, std::size_t... J>
-constexpr bool all_invocable(std::index_sequence<J...>) {
+template <typename E, enum_subtype S, typename F,std::size_t... I>
+constexpr bool all_invocable(std::index_sequence<I...>) {
   if constexpr (count_v<E, S> == 0) {
     return false;
   } else {
-    return (std::is_invocable_v<F&, enum_constant<values_v<E, S>[J]>> && ...);
+    return (std::is_invocable_v<F, enum_constant<values_v<E, S>[I]>> && ...);
   }
 }
 
@@ -90,11 +83,10 @@ template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
   constexpr std::ptrdiff_t count = detail::count_v<D, S>;
 
   if (const auto i = enum_index<D, S>(value)) {
-    const auto index = static_cast<std::ptrdiff_t>(*i);
-    if ((n > 0 && n >= count - index) || (n < 0 && n < -index)) {
-      return {};
+    const std::ptrdiff_t index = (static_cast<std::ptrdiff_t>(*i) + n);
+    if (index >= 0 && index < count) {
+      return enum_value<D, S>(static_cast<std::size_t>(index));
     }
-    return enum_value<D, S>(static_cast<std::size_t>(index + n));
   }
   return {};
 }
@@ -105,11 +97,10 @@ template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
   constexpr std::ptrdiff_t count = detail::count_v<D, S>;
 
   if (const auto i = enum_index<D, S>(value)) {
-    auto index = (static_cast<std::ptrdiff_t>(*i) + (n % count)) % count;
-    if (index < 0) {
-      index += count;
+    const std::ptrdiff_t index = ((((static_cast<std::ptrdiff_t>(*i) + n) % count) + count) % count);
+    if (index >= 0 && index < count) {
+      return enum_value<D, S>(static_cast<std::size_t>(index));
     }
-    return enum_value<D, S>(static_cast<std::size_t>(index));
   }
   return MAGIC_ENUM_ASSERT(false), value;
 }
@@ -120,11 +111,10 @@ template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
   constexpr std::ptrdiff_t count = detail::count_v<D, S>;
 
   if (const auto i = enum_index<D, S>(value)) {
-    const auto index = static_cast<std::ptrdiff_t>(*i);
-    if ((n > 0 && n > index) || (n < 0 && n <= index - count)) {
-      return {};
+    const std::ptrdiff_t index = (static_cast<std::ptrdiff_t>(*i) - n);
+    if (index >= 0 && index < count) {
+      return enum_value<D, S>(static_cast<std::size_t>(index));
     }
-    return enum_value<D, S>(static_cast<std::size_t>(index - n));
   }
   return {};
 }
@@ -135,11 +125,10 @@ template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
   constexpr std::ptrdiff_t count = detail::count_v<D, S>;
 
   if (const auto i = enum_index<D, S>(value)) {
-    auto index = (static_cast<std::ptrdiff_t>(*i) - (n % count)) % count;
-    if (index < 0) {
-      index += count;
+    const std::ptrdiff_t index = ((((static_cast<std::ptrdiff_t>(*i) - n) % count) + count) % count);
+    if (index >= 0 && index < count) {
+      return enum_value<D, S>(static_cast<std::size_t>(index));
     }
-    return enum_value<D, S>(static_cast<std::size_t>(index));
   }
   return MAGIC_ENUM_ASSERT(false), value;
 }
