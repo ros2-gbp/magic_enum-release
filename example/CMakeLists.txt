@@ -1,18 +1,18 @@
 include(CheckCXXCompilerFlag)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  set(MAGIC_ENUM_EXAMPLE_COMPILE_OPTIONS -Wall -Wextra -Wshadow -pedantic-errors -Werror)
-elseif(MSVC)
+if(MSVC)
   set(MAGIC_ENUM_EXAMPLE_COMPILE_OPTIONS /W4 /WX)
   check_cxx_compiler_flag(/permissive- MAGIC_ENUM_EXAMPLE_HAS_PERMISSIVE_FLAG)
   if(MAGIC_ENUM_EXAMPLE_HAS_PERMISSIVE_FLAG)
     list(APPEND MAGIC_ENUM_EXAMPLE_COMPILE_OPTIONS /permissive-)
   endif()
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  set(MAGIC_ENUM_EXAMPLE_COMPILE_OPTIONS -Wall -Wextra -Wshadow -pedantic-errors -Werror ${MAGIC_ENUM_STRICT_WARNINGS})
 endif()
 
 function(magic_enum_add_example target library standard)
   add_executable(${target} ${target}.cpp)
-  set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
+  set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF CXX_SCAN_FOR_MODULES OFF)
   target_compile_features(${target} PRIVATE cxx_std_${standard})
   target_compile_options(${target} PRIVATE ${MAGIC_ENUM_EXAMPLE_COMPILE_OPTIONS})
   target_link_libraries(${target} PRIVATE ${library})
@@ -26,11 +26,9 @@ set(MAGIC_ENUM_EXAMPLES
     example_containers_set
     example_containers_set_lookup
     example_custom_name
+    example_logging
     example_switch
 )
-if(MAGIC_ENUM_OPT_ENABLE_NONASCII)
-  list(APPEND MAGIC_ENUM_EXAMPLES example_nonascii_name)
-endif()
 
 foreach(MAGIC_ENUM_EXAMPLE IN LISTS MAGIC_ENUM_EXAMPLES)
   magic_enum_add_example(${MAGIC_ENUM_EXAMPLE} magic_enum::magic_enum 17)
@@ -43,8 +41,5 @@ if(MAGIC_ENUM_USE_MODULES)
     ${MAGIC_ENUM_MODULE_CXX_STANDARD}
   )
   set_target_properties(example_module_usage PROPERTIES CXX_SCAN_FOR_MODULES ON)
-  if(MAGIC_ENUM_MODULE_IMPORT_STD)
-    set_property(TARGET example_module_usage PROPERTY CXX_MODULE_STD ON)
-    target_compile_definitions(example_module_usage PRIVATE MAGIC_ENUM_TEST_IMPORT_STD)
-  endif()
+  magic_enum_set_module_std(example_module_usage MAGIC_ENUM_TEST_IMPORT_STD)
 endif()

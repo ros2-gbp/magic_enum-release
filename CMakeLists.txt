@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22...4.4)
+cmake_minimum_required(VERSION 3.22...4.5)
 
 if(MAGIC_ENUM_USE_MODULES AND CMAKE_VERSION VERSION_LESS "3.28")
   message(FATAL_ERROR "MAGIC_ENUM_USE_MODULES requires CMake >= 3.28")
@@ -10,7 +10,7 @@ endif()
 
 project(
   magic_enum
-  VERSION "0.9.8"
+  VERSION "0.10.0"
   HOMEPAGE_URL "https://github.com/Neargye/magic_enum"
   DESCRIPTION
     "A library that provides static reflection for enums, work with any enum type without any macro or boilerplate code."
@@ -21,7 +21,6 @@ set(CPACK_PACKAGE_VENDOR "Daniil Goncharov")
 include(GNUInstallDirs)
 
 set(MAGIC_ENUM_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}/cmake")
-list(APPEND CMAKE_MODULE_PATH "${MAGIC_ENUM_CMAKE_DIR}")
 
 option(MAGIC_ENUM_OPT_BUILD_EXAMPLES "Build magic_enum examples" ${PROJECT_IS_TOP_LEVEL})
 option(MAGIC_ENUM_OPT_BUILD_TESTS "Build and perform magic_enum tests" ${PROJECT_IS_TOP_LEVEL})
@@ -38,7 +37,8 @@ option(
 unset(MAGIC_ENUM_VERIFY_INTERFACE_HEADER_SETS_DEFAULT)
 option(MAGIC_ENUM_USE_MODULES "Build the magic_enum C++20 module target" OFF)
 option(MAGIC_ENUM_MODULE_IMPORT_STD "Build the module target with import std" OFF)
-option(MAGIC_ENUM_MODULE_WITH_FMT "Build the module target with fmt::fmt integration" OFF)
+option(MAGIC_ENUM_MODULE_WITH_FMT "Build the module target with {fmt} integration" OFF)
+set(MAGIC_ENUM_MODULE_FMT_TARGET "fmt::fmt" CACHE STRING "{fmt} target linked by the module target, for example fmt::fmt or fmt::fmt-header-only")
 option(MAGIC_ENUM_OPT_INSTALL_PACKAGE_XML "Include package.xml when installing" ${MAGIC_ENUM_OPT_INSTALL})
 
 if(MAGIC_ENUM_MODULE_IMPORT_STD AND NOT MAGIC_ENUM_USE_MODULES)
@@ -50,11 +50,53 @@ endif()
 option(MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION "Test against an installed magic_enum CMake package" OFF)
 option(MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION_PKGCONFIG "Test against an installed magic_enum pkg-config package" OFF)
 
+if(MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION AND MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION_PKGCONFIG)
+  message(FATAL_ERROR "MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION and MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION_PKGCONFIG are mutually exclusive")
+endif()
+if(MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION_PKGCONFIG AND MAGIC_ENUM_USE_MODULES)
+  message(FATAL_ERROR "MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION_PKGCONFIG does not support MAGIC_ENUM_USE_MODULES")
+endif()
+
 set(MAGIC_ENUM_MODULE_CXX_STANDARD 20)
 if(DEFINED CMAKE_CXX_STANDARD AND
    CMAKE_CXX_STANDARD GREATER MAGIC_ENUM_MODULE_CXX_STANDARD)
   set(MAGIC_ENUM_MODULE_CXX_STANDARD ${CMAKE_CXX_STANDARD})
 endif()
+
+if(MAGIC_ENUM_MODULE_IMPORT_STD)
+  if(CMAKE_VERSION VERSION_LESS "3.31")
+    message(FATAL_ERROR "MAGIC_ENUM_MODULE_IMPORT_STD requires CMake >= 3.31")
+  endif()
+  if(CMAKE_CXX_STANDARD LESS 23)
+    message(FATAL_ERROR "MAGIC_ENUM_MODULE_IMPORT_STD requires CMAKE_CXX_STANDARD >= 23")
+  endif()
+  if(CMAKE_VERSION VERSION_LESS "4.5")
+    if(NOT CMAKE_CXX_STANDARD IN_LIST CMAKE_CXX_COMPILER_IMPORT_STD)
+      message(FATAL_ERROR
+        "MAGIC_ENUM_MODULE_IMPORT_STD is not supported for C++${CMAKE_CXX_STANDARD} by the active toolchain. "
+        "Set CMAKE_EXPERIMENTAL_CXX_IMPORT_STD before project() or use CMake 4.5+, and choose a supported standard."
+      )
+    endif()
+  # CMake 4.5 removed CMAKE_CXX_COMPILER_IMPORT_STD and finds the metadata only for toolchains that support import std.
+  elseif(NOT CMAKE_CXX_STDLIB_MODULES_JSON)
+    message(FATAL_ERROR
+      "MAGIC_ENUM_MODULE_IMPORT_STD is not supported by the active toolchain: ${CMAKE_CXX_COMPILER_IMPORT_STD_ERROR_MESSAGE}. "
+      "Use a Ninja generator and a toolchain with import std support, or set CMAKE_CXX_STDLIB_MODULES_JSON."
+    )
+  endif()
+  message(STATUS "magic_enum module: using import std")
+endif()
+
+# Selects import std for a module target and defines the given macro when it is used.
+function(magic_enum_set_module_std target definition)
+  # CMake 3.31 to 4.4 enable import std per target. CMake 4.5 removed CXX_MODULE_STD.
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.31" AND CMAKE_VERSION VERSION_LESS "4.5")
+    set_property(TARGET ${target} PROPERTY CXX_MODULE_STD ${MAGIC_ENUM_MODULE_IMPORT_STD})
+  endif()
+  if(MAGIC_ENUM_MODULE_IMPORT_STD)
+    target_compile_definitions(${target} PRIVATE ${definition})
+  endif()
+endfunction()
 
 if(MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION OR MAGIC_ENUM_OPT_TEST_INSTALLED_VERSION_PKGCONFIG)
   enable_testing()
@@ -68,6 +110,7 @@ set(MAGIC_ENUM_EXPORT_NAMESPACE "${PROJECT_NAME}::")
 set(MAGIC_ENUM_HEADERS
     "${MAGIC_ENUM_INCLUDE_DIR}/magic_enum.hpp"
     "${MAGIC_ENUM_INCLUDE_DIR}/magic_enum_all.hpp"
+    "${MAGIC_ENUM_INCLUDE_DIR}/magic_enum_bitwise.hpp"
     "${MAGIC_ENUM_INCLUDE_DIR}/magic_enum_containers.hpp"
     "${MAGIC_ENUM_INCLUDE_DIR}/magic_enum_flags.hpp"
     "${MAGIC_ENUM_INCLUDE_DIR}/magic_enum_format.hpp"
@@ -102,13 +145,16 @@ if(MAGIC_ENUM_OPT_VERIFY_INTERFACE_HEADER_SETS)
 endif()
 
 if(MAGIC_ENUM_MODULE_WITH_FMT)
-  if(NOT TARGET fmt::fmt)
+  if(MAGIC_ENUM_MODULE_FMT_TARGET STREQUAL "")
+    message(FATAL_ERROR "MAGIC_ENUM_MODULE_WITH_FMT requires MAGIC_ENUM_MODULE_FMT_TARGET to name a {fmt} target")
+  endif()
+  if(NOT TARGET "${MAGIC_ENUM_MODULE_FMT_TARGET}")
     find_package(fmt CONFIG REQUIRED)
   endif()
-  if(NOT TARGET fmt::fmt)
-    message(FATAL_ERROR "MAGIC_ENUM_MODULE_WITH_FMT requires fmt::fmt")
+  if(NOT TARGET "${MAGIC_ENUM_MODULE_FMT_TARGET}")
+    message(FATAL_ERROR "MAGIC_ENUM_MODULE_WITH_FMT requires target ${MAGIC_ENUM_MODULE_FMT_TARGET}. Set MAGIC_ENUM_MODULE_FMT_TARGET to an existing {fmt} target")
   endif()
-  message(STATUS "magic_enum module: using fmt::fmt")
+  message(STATUS "magic_enum module: using ${MAGIC_ENUM_MODULE_FMT_TARGET}")
 endif()
 
 function(magic_enum_make_module_library name)
@@ -122,42 +168,43 @@ function(magic_enum_make_module_library name)
   )
   target_link_libraries(${name} PUBLIC ${PROJECT_NAME})
   target_compile_features(${name} PUBLIC cxx_std_${MAGIC_ENUM_MODULE_CXX_STANDARD})
+  # Clang 18 importers do not honor the header's enum conversion diagnostic pragma.
+  target_compile_options(${name} INTERFACE
+    "$<$<AND:$<COMPILE_LANG_AND_ID:CXX,Clang>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,18>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,19>>:-Wno-enum-constexpr-conversion>"
+  )
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT MAGIC_ENUM_MODULE_IMPORT_STD)
+    target_compile_options(${name} PRIVATE -Wno-include-angled-in-module-purview)
+  endif()
   if(ARGC GREATER 1)
     # Optional private definitions build test variants with custom magic_enum configurations.
     target_compile_definitions(${name} PRIVATE ${ARGN})
   endif()
 
-  # Module-only definitions stay private; CMake exports them for installed module sources without propagating them to importers.
+  # Module-only definitions stay private. CMake exports them for installed module sources without propagating them to importers.
   if(MAGIC_ENUM_MODULE_WITH_FMT)
-    # Use fmt::fmt until fmt provides stable installed C++ module support.
-    target_link_libraries(${name} PUBLIC fmt::fmt)
+    # Use the {fmt} headers until fmt provides stable installed C++ module support.
+    target_link_libraries(${name} PUBLIC "${MAGIC_ENUM_MODULE_FMT_TARGET}")
     target_compile_definitions(${name} PRIVATE MAGIC_ENUM_USE_FMT_HEADER)
   endif()
 
-  if(MAGIC_ENUM_MODULE_IMPORT_STD)
-    if(CMAKE_VERSION VERSION_LESS "3.31")
-      message(FATAL_ERROR "MAGIC_ENUM_MODULE_IMPORT_STD requires CMake >= 3.31")
-    endif()
-    if(CMAKE_CXX_STANDARD LESS 23)
-      message(FATAL_ERROR "MAGIC_ENUM_MODULE_IMPORT_STD requires CMAKE_CXX_STANDARD >= 23")
-    endif()
-    if(NOT CMAKE_CXX_STANDARD IN_LIST CMAKE_CXX_COMPILER_IMPORT_STD)
-      message(FATAL_ERROR
-        "MAGIC_ENUM_MODULE_IMPORT_STD is not supported for C++${CMAKE_CXX_STANDARD} by the active toolchain. "
-        "Set CMAKE_EXPERIMENTAL_CXX_IMPORT_STD before project() and choose a supported standard."
-      )
-    endif()
-    message(STATUS "${name}: using import std")
-    set_property(TARGET ${name} PROPERTY CXX_MODULE_STD ON)
-    target_compile_definitions(${name} PRIVATE MAGIC_ENUM_USE_STD_MODULE)
-  elseif(CMAKE_VERSION VERSION_GREATER_EQUAL "3.31")
-    set_property(TARGET ${name} PROPERTY CXX_MODULE_STD OFF)
-  endif()
+  magic_enum_set_module_std(${name} MAGIC_ENUM_USE_STD_MODULE)
 endfunction()
 
 if(MAGIC_ENUM_USE_MODULES)
   magic_enum_make_module_library(${PROJECT_NAME}_module)
   add_library(${MAGIC_ENUM_EXPORT_NAMESPACE}${PROJECT_NAME}_module ALIAS ${PROJECT_NAME}_module)
+endif()
+
+# CI sets this so the headers stay clean under the strict warnings users may enable.
+set(MAGIC_ENUM_STRICT_WARNINGS)
+if(MAGIC_ENUM_TEST_STRICT_WARNINGS)
+  set(MAGIC_ENUM_STRICT_WARNINGS
+      -Wconversion -Wsign-conversion -Wold-style-cast -Wundef -Wcast-qual -Wnon-virtual-dtor -Wimplicit-fallthrough)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    list(APPEND MAGIC_ENUM_STRICT_WARNINGS -Wuseless-cast -Wduplicated-branches -Wduplicated-cond -Wlogical-op)
+  else()
+    list(APPEND MAGIC_ENUM_STRICT_WARNINGS -Wshadow-all -Wextra-semi -Wcomma -Wunreachable-code -Wnull-dereference)
+  endif()
 endif()
 
 if(MAGIC_ENUM_OPT_BUILD_EXAMPLES)
@@ -170,8 +217,6 @@ if(MAGIC_ENUM_OPT_BUILD_TESTS)
 endif()
 
 if(MAGIC_ENUM_OPT_INSTALL)
-  list(APPEND CMAKE_MODULE_PATH "${MAGIC_ENUM_CMAKE_DIR}/GenPkgConfig")
-  include(GenPkgConfig)
   include(CPackComponent)
   include(CMakePackageConfigHelpers)
 
@@ -210,14 +255,23 @@ if(MAGIC_ENUM_OPT_INSTALL)
   endif()
 
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Header-only C++17 library for static reflection of enums")
   set(CPACK_PACKAGE_DESCRIPTION "${PROJECT_DESCRIPTION}")
+  # Distribution file names: libmagicenum-dev_<version>_all.deb and libmagicenum-devel-<version>-1.noarch.rpm.
+  set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+  set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+  # Module packages are compiler and target specific.
   if(NOT MAGIC_ENUM_USE_MODULES)
     set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "all")
+    set(CPACK_RPM_PACKAGE_ARCHITECTURE "noarch")
   endif()
   set(CPACK_DEBIAN_PACKAGE_NAME "libmagicenum-dev")
+  set(CPACK_DEBIAN_PACKAGE_SECTION "libdevel")
   set(CPACK_RPM_PACKAGE_NAME "libmagicenum-devel")
+  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+  set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
   set(CPACK_PACKAGE_HOMEPAGE_URL "${PROJECT_HOMEPAGE_URL}")
-  set(CPACK_PACKAGE_MAINTAINER "${CPACK_PACKAGE_VENDOR}")
+  set(CPACK_PACKAGE_MAINTAINER "${CPACK_PACKAGE_VENDOR} <neargye@gmail.com>")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_MAINTAINER}")
   set(CPACK_DEB_COMPONENT_INSTALL ON)
@@ -241,7 +295,7 @@ if(MAGIC_ENUM_OPT_INSTALL)
   set(MAGIC_ENUM_FIND_DEPENDENCIES)
   if(MAGIC_ENUM_MODULE_WITH_FMT)
     string(APPEND MAGIC_ENUM_FIND_DEPENDENCIES
-           "if(NOT TARGET fmt::fmt)\n  find_dependency(fmt CONFIG)\nendif()\n"
+           "if(NOT TARGET \"${MAGIC_ENUM_MODULE_FMT_TARGET}\")\n  find_dependency(fmt CONFIG)\nendif()\n"
     )
   endif()
 
@@ -280,14 +334,31 @@ if(MAGIC_ENUM_OPT_INSTALL)
           DESTINATION "${MAGIC_ENUM_CMAKE_CONFIG_INSTALL_DIR}"
   )
 
-  configure_pkg_config_file(
-    "${PROJECT_NAME}"
-    NAME "${PROJECT_NAME}"
-    VERSION "${PROJECT_VERSION}"
-    DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}"
-    URL "${CPACK_PACKAGE_HOMEPAGE_URL}"
-    INSTALL_LIB_DIR "${CMAKE_INSTALL_DATAROOTDIR}"
-    INSTALL_INCLUDE_DIR "${CMAKE_INSTALL_INCLUDEDIR}"
+  set(MAGIC_ENUM_PKG_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig")
+  if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}" OR IS_ABSOLUTE "${MAGIC_ENUM_PKG_CONFIG_INSTALL_DIR}")
+    # Absolute install directories cannot be expressed relative to the .pc file.
+    set(MAGIC_ENUM_PC_PREFIX "${CMAKE_INSTALL_PREFIX}")
+    set(MAGIC_ENUM_PC_INCLUDEDIR "${CMAKE_INSTALL_FULL_INCLUDEDIR}")
+  else()
+    # Relative to ${pcfiledir}, so relocated and DESTDIR installs keep working.
+    file(RELATIVE_PATH MAGIC_ENUM_PC_PREFIX
+      "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig-root/${MAGIC_ENUM_PKG_CONFIG_INSTALL_DIR}"
+      "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig-root"
+    )
+    string(REGEX REPLACE "/$" "" MAGIC_ENUM_PC_PREFIX "${MAGIC_ENUM_PC_PREFIX}")
+    set(MAGIC_ENUM_PC_PREFIX "\${pcfiledir}/${MAGIC_ENUM_PC_PREFIX}")
+    set(MAGIC_ENUM_PC_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+  endif()
+  # pkg-config splits Cflags on unescaped spaces.
+  string(REPLACE " " "\\ " MAGIC_ENUM_PC_PREFIX "${MAGIC_ENUM_PC_PREFIX}")
+  string(REPLACE " " "\\ " MAGIC_ENUM_PC_INCLUDEDIR "${MAGIC_ENUM_PC_INCLUDEDIR}")
+  configure_file("${MAGIC_ENUM_CMAKE_DIR}/${PROJECT_NAME}.pc.in" "${PROJECT_NAME}.pc" @ONLY NEWLINE_STYLE UNIX)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc"
+          DESTINATION "${MAGIC_ENUM_PKG_CONFIG_INSTALL_DIR}"
+  )
+
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+          DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}"
   )
 
   if(MAGIC_ENUM_OPT_INSTALL_PACKAGE_XML)
@@ -296,5 +367,8 @@ if(MAGIC_ENUM_OPT_INSTALL)
     )
   endif()
 
-  include(CPack)
+  # CPack writes its configuration to the top-level build directory, so a subproject must not replace the parent's packaging, see #418.
+  if(PROJECT_IS_TOP_LEVEL)
+    include(CPack)
+  endif()
 endif()
