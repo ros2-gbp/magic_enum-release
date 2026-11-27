@@ -9,10 +9,15 @@ module;
 
 #  include <compare>
 #  include <cstdlib>
-#  if __has_include(<format>)
+#  include <initializer_list>
+#  include <ios>
+#  include <iterator>
+#  if !defined(MAGIC_ENUM_NO_STD_FORMAT) && __has_include(<format>)
 #    include <format>
 #  endif
 #  include <stdexcept>
+#  include <string>
+#  include <string_view>
 #  if __has_include(<bit>)
 #    include <bit>
 #  endif
@@ -21,9 +26,11 @@ module;
 #  endif
 
 #  include <magic_enum/magic_enum.hpp>
+#  include <magic_enum/magic_enum_bitwise.hpp>
 #  include <magic_enum/magic_enum_flags.hpp>
 #  include <magic_enum/magic_enum_fuse.hpp>
 #  include <magic_enum/magic_enum_iostream.hpp>
+#  include <magic_enum/magic_enum_switch.hpp>
 #  include <magic_enum/magic_enum_utility.hpp>
 
 #else // MAGIC_ENUM_USE_STD_MODULE
@@ -43,6 +50,7 @@ export module magic_enum;
 
 #ifdef MAGIC_ENUM_USE_STD_MODULE
 import std;
+#endif
 
 extern "C++" {
 #  if defined(__clang__)
@@ -53,39 +61,19 @@ extern "C++" {
 #    pragma warning(disable : 5244)
 #  endif
 
-#  include <magic_enum/magic_enum.hpp>
-#  ifndef MAGIC_ENUM_USING_ALIAS_STRING
-#    include <magic_enum/magic_enum_containers.hpp>
-#  endif
-#  include <magic_enum/magic_enum_flags.hpp>
-#  include <magic_enum/magic_enum_format.hpp>
-#  include <magic_enum/magic_enum_fuse.hpp>
-#  include <magic_enum/magic_enum_iostream.hpp>
-#  include <magic_enum/magic_enum_switch.hpp>
-#  include <magic_enum/magic_enum_utility.hpp>
-
-#  if defined(__clang__)
-#    pragma clang diagnostic pop
-#  elif defined(_MSC_VER)
-#    pragma warning(pop)
-#  endif
-}
-#else
-extern "C++" {
-#  if defined(__clang__)
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
-#  elif defined(_MSC_VER)
-#    pragma warning(push)
-#    pragma warning(disable : 5244)
+#  ifdef MAGIC_ENUM_USE_STD_MODULE
+#    include <magic_enum/magic_enum.hpp>
+#    include <magic_enum/magic_enum_bitwise.hpp>
+#    include <magic_enum/magic_enum_flags.hpp>
+#    include <magic_enum/magic_enum_fuse.hpp>
+#    include <magic_enum/magic_enum_iostream.hpp>
+#    include <magic_enum/magic_enum_switch.hpp>
+#    include <magic_enum/magic_enum_utility.hpp>
 #  endif
 
 // Keep standard-library specializations attached to the named module. Exporting the primary template does not make specializations from the global module fragment reachable to importers.
-#  ifndef MAGIC_ENUM_USING_ALIAS_STRING
-#    include <magic_enum/magic_enum_containers.hpp>
-#  endif
+#  include <magic_enum/magic_enum_containers.hpp>
 #  include <magic_enum/magic_enum_format.hpp>
-#  include <magic_enum/magic_enum_switch.hpp>
 
 #  if defined(__clang__)
 #    pragma clang diagnostic pop
@@ -93,7 +81,6 @@ extern "C++" {
 #    pragma warning(pop)
 #  endif
 }
-#endif
 
 export namespace magic_enum {
 namespace customize {
@@ -130,7 +117,6 @@ namespace bitwise_operators {
   using bitwise_operators::operator^=;
 }
 
-#ifndef MAGIC_ENUM_USING_ALIAS_STRING
 namespace containers {
   using containers::array;
   using containers::bitset;
@@ -146,7 +132,6 @@ namespace containers {
   using containers::set;
   using containers::to_array;
 }
-#endif
 
 using magic_enum::optional;
 using magic_enum::string_view;
@@ -159,6 +144,8 @@ using magic_enum::enum_cast;
 using magic_enum::enum_value;
 using magic_enum::enum_values;
 using magic_enum::enum_count;
+using magic_enum::enum_min;
+using magic_enum::enum_max;
 using magic_enum::enum_integer;
 using magic_enum::enum_underlying;
 using magic_enum::enum_names;
@@ -188,7 +175,7 @@ using magic_enum::is_unscoped_enum_v;
 using magic_enum::is_scoped_enum;
 using magic_enum::is_scoped_enum_v;
 using magic_enum::is_flags_enum;
-using magic_enum::is_flags_v;
+using magic_enum::is_flags_enum_v;
 using magic_enum::underlying_type;
 using magic_enum::underlying_type_t;
 

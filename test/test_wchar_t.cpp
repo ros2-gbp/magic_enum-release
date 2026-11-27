@@ -2,38 +2,60 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 
-#include <new>
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+
+#include <string>
+#include <string_view>
 
 #define MAGIC_ENUM_USING_ALIAS_STRING_VIEW using string_view = std::wstring_view;
 #define MAGIC_ENUM_USING_ALIAS_STRING      using string      = std::wstring;
-#include <magic_enum/magic_enum.hpp>
-#include <magic_enum/magic_enum_containers.hpp>
-#include <magic_enum/magic_enum_iostream.hpp>
+#define MAGIC_ENUM_NO_STD_FORMAT
+#define MAGIC_ENUM_NO_FMT_FORMAT
+#include <magic_enum/magic_enum_all.hpp>
 
+#include "test_fixed_string.hpp"
 #include "test_helpers.hpp"
 
 #include <array>
 #include <cctype>
+#include <iomanip>
 #include <sstream>
-#include <string_view>
 
 enum class Color { RED = -12, GREEN = 7, BLUE = 15 };
+constexpr wchar_t red_name[] = {L'r', L'e', L'd'};
 template <>
 constexpr magic_enum::customize::customize_t magic_enum::customize::enum_name<Color>(Color value) noexcept {
   switch (value) {
     case Color::RED:
-      return L"red";
+      return string_view{red_name, std::size(red_name)};
     default:
       return default_tag;
   }
 }
 
+enum class WideFlags { First = 1, Second = 2 };
+template <>
+struct magic_enum::customize::enum_range<WideFlags> {
+  static constexpr bool is_flags = true;
+};
+
 using namespace magic_enum;
 using namespace magic_enum_tests;
 
 static_assert(is_magic_enum_supported, "magic_enum: Unsupported compiler (https://github.com/Neargye/magic_enum#compiler-compatibility).");
+
+TEST_CASE("bool enum wide string lookup") {
+  enum class Binary : bool { FALSE_VALUE = false, TRUE_VALUE = true };
+  static_assert(enum_cast<Binary>(L"FALSE_VALUE") == Binary::FALSE_VALUE);
+  static_assert(enum_cast<Binary>(L"TRUE_VALUE") == Binary::TRUE_VALUE);
+  static_assert(!enum_cast<Binary>(L"INVALID").has_value());
+  static_assert(!enum_cast<Binary>(L"").has_value());
+  static_assert(!enum_contains<Binary>(L"INVALID"));
+  static_assert(enum_cast<Binary>(L"false_value", case_insensitive) == Binary::FALSE_VALUE);
+  const wchar_t* name = L"FALSE_VALUE";
+  CHECK(enum_cast<Binary>(name) == Binary::FALSE_VALUE);
+  CHECK(enum_cast<Binary>(std::wstring{name}) == Binary::FALSE_VALUE);
+}
 
 TEST_CASE("enum_cast") {
   SUBCASE("string") {
@@ -137,6 +159,18 @@ TEST_CASE("wstring_view lifetime and null termination") {
 }
 
 TEST_CASE("ostream_operators") {
+  SUBCASE("field width applies to the name") {
+    using namespace magic_enum::ostream_operators;
+
+    std::wostringstream wide;
+    wide << std::setfill(L'_') << std::setw(6) << Color::RED << L'|';
+    REQUIRE(wide.str() == L"___red|");
+
+    std::ostringstream narrow;
+    narrow << std::setfill('_') << std::setw(6) << Color::RED << '|';
+    REQUIRE(narrow.str() == "___red|");
+  }
+
   require_ostream(std::make_optional(Color::RED), L"red");
   require_ostream(Color::GREEN, L"GREEN");
   require_ostream(Color::BLUE, L"BLUE");
@@ -149,6 +183,17 @@ TEST_CASE("istream_operators") {
   require_istream(Color::BLUE, L"BLUE");
 }
 
+TEST_CASE("wide String parameter") {
+  using Name = FixedString<16, wchar_t>;
+  static_assert(std::is_same_v<decltype(enum_flags_name(WideFlags::First)), std::wstring>);
+  static_assert(enum_flags_name<WideFlags, Name>(static_cast<WideFlags>(3), L',') == L"First,Second");
+  REQUIRE(enum_flags_name(static_cast<WideFlags>(3)) == L"First|Second");
+
+  constexpr containers::bitset<Color> bits{Color::RED, Color::BLUE};
+  static_assert(bits.to_string<Name>() == L"red|BLUE");
+  static_assert(bits.to_string<Name>(containers::raw_access) == L"101");
+}
+
 TEST_CASE("containers_bitset_iostream") {
   magic_enum::containers::bitset<Color> bits {Color::RED, Color::BLUE};
   std::wstringstream output;
@@ -159,4 +204,25 @@ TEST_CASE("containers_bitset_iostream") {
   input >> bits;
   const magic_enum::containers::bitset<Color> expected {Color::GREEN};
   REQUIRE(bits == expected);
+}
+
+TEST_CASE("containers_bitset_ostream_field_width") {
+  const magic_enum::containers::bitset<Color> bits{Color::RED, Color::BLUE};
+  for (const bool left : {false, true}) {
+    std::wostringstream stream;
+    stream.setf(left ? std::ios::left : std::ios::right, std::ios::adjustfield);
+    stream.fill(L'_');
+    stream.width(12);
+    stream << bits;
+    REQUIRE(stream.width() == 0);
+    stream << L'!';
+    REQUIRE(stream.str() == (left ? L"red|BLUE____!" : L"____red|BLUE!"));
+  }
+
+  std::basic_ostringstream<wchar_t, CustomCharTraits<wchar_t>> custom;
+  custom.fill(L'_');
+  custom.width(12);
+  custom << bits << L'!';
+  const auto result = custom.str();
+  REQUIRE(std::wstring(result.data(), result.size()) == L"____red|BLUE!");
 }

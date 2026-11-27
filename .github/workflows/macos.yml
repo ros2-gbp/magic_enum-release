@@ -1,45 +1,77 @@
 name: macos
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['**.md', 'doc/**']
+  pull_request:
+    paths-ignore: ['**.md', 'doc/**']
+  workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   build:
+    name: "${{ matrix.config.os }} / ${{ matrix.config.compiler }} / ${{ matrix.config.build_type }}"
+    timeout-minutes: 30
+    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-        - macos-15 # https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md#xcode
-        - macos-26 # https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md#xcode
-        compiler: [Apple Clang, GCC]
-        build_type: [Release, Debug]
-
-    name: "${{ matrix.os }} / ${{ matrix.compiler }} / ${{ matrix.build_type }}"
-    runs-on: ${{ matrix.os }}
+        # Homebrew installs the same GCC on every image, so test it once.
+        # The strict row also uses the latest Homebrew fmt.
+        config:
+        - { os: macos-15, compiler: Apple Clang, build_type: Release }
+        - { os: macos-26, compiler: Apple Clang, build_type: Release }
+        - { os: macos-26, compiler: Apple Clang, build_type: Debug, strict: true }
+        - { os: macos-26, compiler: GCC, build_type: Release }
 
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
-    - name: Configure compiler
+    - name: Set up compiler
       run: |
-        if [[ "${{ matrix.compiler }}" == "GCC" ]]; then
+        if [[ "${{ matrix.config.compiler }}" == "GCC" ]]; then
           brew install gcc
           gcc_bin="$(brew --prefix gcc)/bin"
-          gcc_version="$(brew list --versions gcc | awk '{print $2}')"
-          gcc_major="${gcc_version%%.*}"
+          gcc_major="$(brew list --versions gcc | awk '{print $2}')"
+          gcc_major="${gcc_major%%.*}"
           echo "CC=${gcc_bin}/gcc-${gcc_major}" >> "${GITHUB_ENV}"
           echo "CXX=${gcc_bin}/g++-${gcc_major}" >> "${GITHUB_ENV}"
+          "${gcc_bin}/g++-${gcc_major}" --version
         else
           echo "CC=clang" >> "${GITHUB_ENV}"
           echo "CXX=clang++" >> "${GITHUB_ENV}"
+          clang++ --version
         fi
+        command -v ninja > /dev/null 2>&1 || brew install ninja
+
+    - name: Install fmt
+      if: ${{ matrix.config.strict }}
+      run: |
+        brew install fmt
+        brew list --versions fmt
+        echo "CXXFLAGS=-isystem $(brew --prefix fmt)/include" >> "${GITHUB_ENV}"
 
     - name: Configure
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      run: |
+        cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} \
+          -DMAGIC_ENUM_TEST_STRICT_WARNINGS=${{ matrix.config.strict && 'ON' || 'OFF' }} \
+          -DMAGIC_ENUM_TEST_REQUIRE_FMT=${{ matrix.config.strict && 'ON' || 'OFF' }}
 
     - name: Build
-      run: cmake --build build --parallel --config ${{ matrix.build_type }}
+      run: cmake --build build --parallel "$(sysctl -n hw.logicalcpu)"
 
     - name: Test
-      run: ctest --test-dir build --output-on-failure --no-tests=error -C ${{ matrix.build_type }}
+      run: ctest --test-dir build --parallel "$(sysctl -n hw.logicalcpu)" --output-on-failure --no-tests=error

@@ -5,7 +5,7 @@
 // | |  | | (_| | (_| | | (__  | |____| | | | |_| | | | | | | | |____|_|   |_|
 // |_|  |_|\__,_|\__, |_|\___| |______|_| |_|\__,_|_| |_| |_|  \_____|
 //                __/ | https://github.com/Neargye/magic_enum
-//               |___/  version 0.9.8
+//               |___/  version 0.10.0
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
@@ -33,9 +33,17 @@
 #define NEARGYE_MAGIC_ENUM_UTILITY_HPP
 
 #include "magic_enum.hpp"
+#if MAGIC_ENUM_VERSION_MAJOR != 0 || MAGIC_ENUM_VERSION_MINOR != 10 || MAGIC_ENUM_VERSION_PATCH != 0
+#  error "magic_enum headers of different versions are mixed. Check the include paths."
+#endif
 
 #ifndef MAGIC_ENUM_USE_STD_MODULE
 #  include <tuple>
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma warning(push)
+#  pragma warning(disable : 4459 6244) // Local names can match global names in user code.
 #endif
 
 namespace magic_enum {
@@ -43,55 +51,61 @@ namespace magic_enum {
 namespace detail {
 
 template <typename E, enum_subtype S, typename F, std::size_t J>
-using enum_for_each_result_t = std::decay_t<std::invoke_result_t<F&, enum_constant<values_v<E, S>[J]>>>;
+using enum_for_each_result_t = std::invoke_result_t<F&, enum_constant<values_v<E, S>[J]>>;
 
 template <typename E, enum_subtype S, typename F, std::size_t... J>
 constexpr auto for_each(F&& f, std::index_sequence<J...>) {
-  constexpr bool has_void_return = (std::is_void_v<std::invoke_result_t<F&, enum_constant<values_v<E, S>[J]>>> || ...);
-  constexpr bool all_same_return = (std::is_same_v<std::invoke_result_t<F&, enum_constant<values_v<E, S>[0]>>, std::invoke_result_t<F&, enum_constant<values_v<E, S>[J]>>> && ...);
-
-  if constexpr (has_void_return) {
-    (f(enum_constant<values_v<E, S>[J]>{}), ...);
-  } else if constexpr (all_same_return) {
-    return std::array<enum_for_each_result_t<E, S, F, 0>, sizeof...(J)>{{f(enum_constant<values_v<E, S>[J]>{})...}};
+  if constexpr (sizeof...(J) == 0) {
+    static_cast<void>(f);
+  } else if constexpr ((std::is_invocable_v<F&, enum_constant<values_v<E, S>[J]>> && ...)) {
+    if constexpr ((std::is_void_v<enum_for_each_result_t<E, S, F, J>> || ...)) {
+      (static_cast<void>(detail::invoke_constant(f, enum_constant<values_v<E, S>[J]>{})), ...);
+    } else if constexpr ((std::is_same_v<enum_for_each_result_t<E, S, F, 0>, enum_for_each_result_t<E, S, F, J>> && ...)) {
+      return std::array<std::decay_t<enum_for_each_result_t<E, S, F, 0>>, sizeof...(J)>{{detail::invoke_constant(f, enum_constant<values_v<E, S>[J]>{})...}};
+    } else {
+      return std::tuple<std::decay_t<enum_for_each_result_t<E, S, F, J>>...>{detail::invoke_constant(f, enum_constant<values_v<E, S>[J]>{})...};
+    }
   } else {
-    return std::tuple<enum_for_each_result_t<E, S, F, J>...>{f(enum_constant<values_v<E, S>[J]>{})...};
+    static_assert(always_false_v<E>, "magic_enum::enum_for_each requires the callable to be invocable with every enum value.");
   }
 }
 
-template <typename E, enum_subtype S, typename F, std::size_t... J>
-constexpr bool all_invocable(std::index_sequence<J...>) {
-  if constexpr (count_v<E, S> == 0) {
-    return false;
-  } else {
-    return (std::is_invocable_v<F&, enum_constant<values_v<E, S>[J]>> && ...);
+template <typename E, enum_subtype S, bool Reverse>
+constexpr E circular_value(E value, std::ptrdiff_t n) noexcept {
+  constexpr std::ptrdiff_t count = count_v<E, S>;
+  if constexpr (count != 0) {
+    if (const auto i = index_of<E, S>(static_cast<std::underlying_type_t<E>>(value)); i < count_v<E, S>) {
+      const auto offset = n % count;
+      auto index = (static_cast<std::ptrdiff_t>(i) + (Reverse ? -offset : offset)) % count;
+      if (index < 0) {
+        index += count;
+      }
+      return enum_value<E, S>(static_cast<std::size_t>(index));
+    }
   }
+  return MAGIC_ENUM_ASSERT(false), value;
 }
 
 } // namespace magic_enum::detail
 
+// Calls f with enum_constant<V> for each enum value.
 template <typename E, detail::enum_subtype S = detail::subtype_v<E>, typename F, detail::enable_if_t<E, int> = 0>
 constexpr auto enum_for_each(F&& f) {
   using D = std::decay_t<E>;
-  static_assert(std::is_enum_v<D>, "magic_enum::enum_for_each requires enum type.");
-  static_assert(detail::is_reflected_v<D, S>, "magic_enum requires enum implementation and valid max and min.");
-  constexpr auto sep = std::make_index_sequence<detail::count_v<D, S>>{};
-
-  if constexpr (detail::all_invocable<D, S, F>(sep)) {
-    return detail::for_each<D, S>(std::forward<F>(f), sep);
-  } else {
-    static_assert(detail::always_false_v<D>, "magic_enum::enum_for_each requires invocable of all enum value.");
-  }
+  static_assert(detail::is_reflected_v<D, S>, "magic_enum::enum_for_each requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
+  return detail::for_each<D, S>(std::forward<F>(f), std::make_index_sequence<detail::count_v<D, S>>{});
 }
 
+// Returns the value n positions after value in enum_values order, or an empty optional.
 template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
 [[nodiscard]] constexpr auto enum_next_value(E value, std::ptrdiff_t n = 1) noexcept -> detail::enable_if_t<E, optional<std::decay_t<E>>> {
   using D = std::decay_t<E>;
+  static_assert(detail::is_reflected_v<D, S>, "magic_enum::enum_next_value requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
   constexpr std::ptrdiff_t count = detail::count_v<D, S>;
 
-  if (const auto i = enum_index<D, S>(value)) {
-    const auto index = static_cast<std::ptrdiff_t>(*i);
-    if ((n > 0 && n >= count - index) || (n < 0 && n < -index)) {
+  if (const auto i = detail::index_of<D, S>(static_cast<underlying_type_t<D>>(value)); i < detail::count_v<D, S>) {
+    const auto index = static_cast<std::ptrdiff_t>(i);
+    if (n >= count - index || n < -index) {
       return {};
     }
     return enum_value<D, S>(static_cast<std::size_t>(index + n));
@@ -99,29 +113,24 @@ template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
   return {};
 }
 
+// Returns the value n positions after value in enum_values order, wrapping around. Requires a reflected value.
 template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
 [[nodiscard]] constexpr auto enum_next_value_circular(E value, std::ptrdiff_t n = 1) noexcept -> detail::enable_if_t<E, std::decay_t<E>> {
   using D = std::decay_t<E>;
-  constexpr std::ptrdiff_t count = detail::count_v<D, S>;
-
-  if (const auto i = enum_index<D, S>(value)) {
-    auto index = (static_cast<std::ptrdiff_t>(*i) + (n % count)) % count;
-    if (index < 0) {
-      index += count;
-    }
-    return enum_value<D, S>(static_cast<std::size_t>(index));
-  }
-  return MAGIC_ENUM_ASSERT(false), value;
+  static_assert(detail::is_reflected_v<D, S>, "magic_enum::enum_next_value_circular requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
+  return detail::circular_value<D, S, false>(value, n);
 }
 
+// Returns the value n positions before value in enum_values order, or an empty optional.
 template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
 [[nodiscard]] constexpr auto enum_prev_value(E value, std::ptrdiff_t n = 1) noexcept -> detail::enable_if_t<E, optional<std::decay_t<E>>> {
   using D = std::decay_t<E>;
+  static_assert(detail::is_reflected_v<D, S>, "magic_enum::enum_prev_value requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
   constexpr std::ptrdiff_t count = detail::count_v<D, S>;
 
-  if (const auto i = enum_index<D, S>(value)) {
-    const auto index = static_cast<std::ptrdiff_t>(*i);
-    if ((n > 0 && n > index) || (n < 0 && n <= index - count)) {
+  if (const auto i = detail::index_of<D, S>(static_cast<underlying_type_t<D>>(value)); i < detail::count_v<D, S>) {
+    const auto index = static_cast<std::ptrdiff_t>(i);
+    if (n > index || n <= index - count) {
       return {};
     }
     return enum_value<D, S>(static_cast<std::size_t>(index - n));
@@ -129,21 +138,18 @@ template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
   return {};
 }
 
+// Returns the value n positions before value in enum_values order, wrapping around. Requires a reflected value.
 template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
 [[nodiscard]] constexpr auto enum_prev_value_circular(E value, std::ptrdiff_t n = 1) noexcept -> detail::enable_if_t<E, std::decay_t<E>> {
   using D = std::decay_t<E>;
-  constexpr std::ptrdiff_t count = detail::count_v<D, S>;
-
-  if (const auto i = enum_index<D, S>(value)) {
-    auto index = (static_cast<std::ptrdiff_t>(*i) - (n % count)) % count;
-    if (index < 0) {
-      index += count;
-    }
-    return enum_value<D, S>(static_cast<std::size_t>(index));
-  }
-  return MAGIC_ENUM_ASSERT(false), value;
+  static_assert(detail::is_reflected_v<D, S>, "magic_enum::enum_prev_value_circular requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
+  return detail::circular_value<D, S, true>(value, n);
 }
 
 } // namespace magic_enum
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma warning(pop)
+#endif
 
 #endif // NEARGYE_MAGIC_ENUM_UTILITY_HPP

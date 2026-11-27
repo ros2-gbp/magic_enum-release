@@ -19,24 +19,23 @@ struct MyOpt {
   constexpr const T& value() const { return val; }
 
  private:
-  bool mHasValue;
-  T val;
+  const bool mHasValue;
+  const T val;
 };
 
 struct MyString {
-  using value_type = char; // required
-  static constexpr auto npos = std::string_view::npos; // required
+  using value_type = char;
 
-  MyString() : str{} {} // required
-  MyString(const char* s, std::size_t l) : str{s, l} {} // required
-  bool empty() const { return str.empty(); } // required
-  auto begin() const { return str.begin(); } // required
-  auto end() const { return str.end(); } // required
-  void append(std::size_t count, char c) { str.append(count, c); } // required
-  void append(const char* s, std::size_t size) { str.append(s, size); } // required
-
+  MyString() = default;
+  MyString(const MyString&) = delete;
+  MyString(MyString&&) = default;
+  bool empty() const { return str.empty(); }
   std::size_t size() const { return str.size(); }
-  int compare(const char* s) const { return str.compare(s); }
+  const char* data() const { return str.data(); }
+  void reserve(std::size_t size) { str.reserve(size); }
+  void clear() { str.clear(); }
+  void append(std::size_t count, char c) { str.append(count, c); }
+  void append(const char* s, std::size_t size) { str.append(s, size); }
 
  private:
   std::string str;
@@ -55,10 +54,10 @@ struct MyStringView {
   constexpr const char& operator[](std::size_t i) const { return str[i]; } // required
   constexpr auto begin() const { return str.begin(); } // required
   constexpr auto end() const { return str.end(); } // required
-  constexpr std::size_t find(char c) const { return str.find(c); } // required
+  constexpr std::size_t find(char c) const { return str.find(c); }
   constexpr MyStringView substr(std::size_t p, std::size_t n) { return str.substr(p, n); } // required
-  constexpr void remove_prefix(std::size_t n) { str.remove_prefix(n); } // required
-  constexpr void remove_suffix(std::size_t n) { str.remove_suffix(n); } // required
+  constexpr void remove_prefix(std::size_t n) { str.remove_prefix(n); }
+  constexpr void remove_suffix(std::size_t n) { str.remove_suffix(n); }
   friend constexpr bool operator==(MyStringView lhs, MyStringView rhs); // required
 
   constexpr MyStringView(const char* cstr) : str{ cstr } {}

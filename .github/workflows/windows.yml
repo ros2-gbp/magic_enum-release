@@ -1,34 +1,77 @@
 name: windows
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['**.md', 'doc/**']
+  pull_request:
+    paths-ignore: ['**.md', 'doc/**']
+  workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    name: "${{ matrix.config.os }} / ${{ matrix.config.platform }} / ${{ matrix.config.build_type }}${{ matrix.config.compiler && format(' / {0}', matrix.config.compiler) || '' }}"
+    timeout-minutes: 30
     runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
+        # windows-2022 has VS 2022 and the v142 toolset. windows-2025 and windows-11-arm have VS 2026.
         config:
-        - { os: windows-2022, label: "Windows Server 2022" } # https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md
-        - { os: windows-2025, label: "Windows Server 2025" } # https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md
-        platform: [x64, Win32]
-        build_type: [Release, Debug]
+        - { os: windows-2022, compiler: "", platform: x64, build_type: Release, clr: true }
+        - { os: windows-2022, compiler: "", platform: x64, build_type: Debug }
+        - { os: windows-2022, compiler: "", platform: Win32, build_type: Release }
+        - { os: windows-2025, compiler: "", platform: x64, build_type: Release }
+        - { os: windows-2025, compiler: "", platform: x64, build_type: Debug }
+        - { os: windows-2025, compiler: "", platform: Win32, build_type: Release }
+        - { os: windows-2022, compiler: "v142", platform: x64, build_type: Release }
+        - { os: windows-2022, compiler: "v142", platform: Win32, build_type: Release }
+        - { os: windows-2025, compiler: "ClangCL", platform: x64, build_type: Release }
+        - { os: windows-2025, compiler: "ClangCL", platform: Win32, build_type: Release }
+        - { os: windows-11-arm, compiler: "", platform: ARM64, build_type: Release, clr: true }
+        - { os: windows-11-arm, compiler: "", platform: ARM64, build_type: Debug }
 
-    name: "${{ matrix.config.label }} / ${{ matrix.platform }} / ${{ matrix.build_type }}"
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Configure
-      run: cmake -S . -B build -A ${{ matrix.platform }}
+      run: cmake -S . -B build -A ${{ matrix.config.platform }} -T "${{ matrix.config.compiler }}"
 
     - name: Build
-      run: cmake --build build --parallel --config ${{ matrix.build_type }}
-
-    - name: Build C++/CLI smoke test
-      if: ${{ matrix.config.os == 'windows-2022' && matrix.platform == 'x64' && matrix.build_type == 'Release' }}
-      run: cmake --build build --target test_clr --config ${{ matrix.build_type }}
+      run: cmake --build build --parallel $env:NUMBER_OF_PROCESSORS --config ${{ matrix.config.build_type }}
 
     - name: Test
-      run: ctest --test-dir build --output-on-failure --no-tests=error -C ${{ matrix.build_type }}
+      run: ctest --test-dir build --parallel $env:NUMBER_OF_PROCESSORS --output-on-failure --no-tests=error -C ${{ matrix.config.build_type }}
+
+    - name: Build C++/CLI smoke test
+      if: ${{ matrix.config.clr }}
+      run: cmake --build build --parallel $env:NUMBER_OF_PROCESSORS --target test_clr --config Release
+
+  analyze:
+    name: MSVC code analysis
+    timeout-minutes: 30
+    runs-on: windows-2025
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+      with:
+        arch: x64
+
+    - name: Configure
+      # Analyze our code, not the STL and Windows SDK from INCLUDE.
+      run: cmake -S . -B build -A x64 "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /GR /EHsc /analyze /external:env:INCLUDE /external:W0 /analyze:external-"
+
+    - name: Code analysis
+      run: cmake --build build --parallel $env:NUMBER_OF_PROCESSORS --config Release

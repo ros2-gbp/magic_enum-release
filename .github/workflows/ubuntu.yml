@@ -1,149 +1,182 @@
 name: ubuntu
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['**.md', 'doc/**']
+  pull_request:
+    paths-ignore: ['**.md', 'doc/**']
+  workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  ubuntu:
+  build:
+    name: "${{ matrix.config.compiler }}${{ matrix.config.stdlib && format(' / {0}', matrix.config.stdlib) || '' }} / ${{ matrix.config.build_type }}"
+    timeout-minutes: 30
+    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
-        compiler:
-        - { cc: "gcc-11",   cxx: "g++-11",     os: "ubuntu-22.04", nonascii: "TRUE",  modules: "FALSE", import_std: "FALSE" }
-        - { cc: "gcc-11",   cxx: "g++-11",     os: "ubuntu-22.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "gcc-12",   cxx: "g++-12",     os: "ubuntu-22.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "gcc-13",   cxx: "g++-13",     os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "gcc-14",   cxx: "g++-14",     os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "gcc-15",   cxx: "g++-15",     os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "gcc-16",   cxx: "g++-16",     os: "ubuntu-26.04", nonascii: "FALSE", modules: "TRUE",  import_std: "TRUE"  }
-        - { cc: "clang-13", cxx: "clang++-13", os: "ubuntu-22.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-14", cxx: "clang++-14", os: "ubuntu-22.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-15", cxx: "clang++-15", os: "ubuntu-22.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-16", cxx: "clang++-16", os: "ubuntu-22.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-17", cxx: "clang++-17", os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-18", cxx: "clang++-18", os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-19", cxx: "clang++-19", os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-19", cxx: "clang++-19", os: "ubuntu-24.04", nonascii: "FALSE", modules: "TRUE",  import_std: "TRUE"  }
-        - { cc: "clang-20", cxx: "clang++-20", os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-20", cxx: "clang++-20", os: "ubuntu-24.04", nonascii: "FALSE", modules: "TRUE",  import_std: "FALSE" }
-        - { cc: "clang-21", cxx: "clang++-21", os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-21", cxx: "clang++-21", os: "ubuntu-24.04", nonascii: "FALSE", modules: "TRUE",  import_std: "FALSE" }
-        - { cc: "clang-22", cxx: "clang++-22", os: "ubuntu-24.04", nonascii: "FALSE", modules: "FALSE", import_std: "FALSE" }
-        - { cc: "clang-22", cxx: "clang++-22", os: "ubuntu-24.04", nonascii: "FALSE", modules: "TRUE",  import_std: "FALSE" }
+        # Users compile the headers with their own flags, so strict rows keep them clean under strict warnings.
+        config:
+        - { os: ubuntu-22.04, compiler: "gcc-11", build_type: Release, strict: true }
+        - { os: ubuntu-22.04, compiler: "gcc-11", build_type: Debug }
+        - { os: ubuntu-22.04, compiler: "gcc-12", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "gcc-13", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "gcc-14", build_type: Release }
+        - { os: ubuntu-26.04, compiler: "gcc-15", build_type: Release }
+        - { os: ubuntu-26.04, compiler: "gcc-16", build_type: Release, strict: true }
+        - { os: ubuntu-22.04, compiler: "clang-13", build_type: Release, strict: true }
+        - { os: ubuntu-22.04, compiler: "clang-13", build_type: Debug }
+        - { os: ubuntu-22.04, compiler: "clang-14", build_type: Release }
+        - { os: ubuntu-22.04, compiler: "clang-15", build_type: Release }
+        - { os: ubuntu-22.04, compiler: "clang-16", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "clang-17", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "clang-18", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "clang-19", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "clang-20", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "clang-21", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "clang-22", build_type: Release }
+        - { os: ubuntu-24.04, compiler: "clang-23", build_type: Release, strict: true }
+        # libc++ evaluates more std::string operations as constants, which changes Clang warnings.
+        - { os: ubuntu-24.04, compiler: "clang-23", stdlib: "libc++", build_type: Debug, strict: true }
 
-    name: "${{ format('{0} NONASCII={1} MODULES={2} IMPORT_STD={3}', matrix.compiler.cc, matrix.compiler.nonascii, matrix.compiler.modules, matrix.compiler.import_std) }}"
-    runs-on: ${{ matrix.compiler.os }}
-    env:
-      CC: ${{ matrix.compiler.cc }}
-      CXX: ${{ matrix.compiler.cxx }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-linux-compiler
+      with:
+        compiler: ${{ matrix.config.compiler }}
+        stdlib: ${{ matrix.config.stdlib || 'libstdc++' }}
 
-    - name: Configure clang
-      if: ${{ startsWith(matrix.compiler.cc, 'clang') }}
+    - name: Configure
       run: |
-        wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/llvm-archive-keyring.gpg > /dev/null
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} \
+          -DMAGIC_ENUM_TEST_STRICT_WARNINGS=${{ matrix.config.strict && 'ON' || 'OFF' }} \
+          ${{ matrix.config.stdlib == 'libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++' || '' }}
 
-        clang_version="${{ matrix.compiler.cc }}"
-        clang_version="${clang_version#clang-}"
-        ubuntu_codename="$(lsb_release -cs)"
-        llvm_repository="http://apt.llvm.org/${ubuntu_codename}/"
-        llvm_suite="llvm-toolchain-${ubuntu_codename}-${clang_version}"
+    - name: Build
+      run: cmake --build build --parallel "$(nproc)"
 
-        echo "deb [signed-by=/etc/apt/keyrings/llvm-archive-keyring.gpg] ${llvm_repository} ${llvm_suite} main" \
-          | sudo tee /etc/apt/sources.list.d/llvm.list
-        sudo apt update
-        sudo apt install -y ${{ matrix.compiler.cc }}
+    - name: Test
+      run: ctest --test-dir build --parallel "$(nproc)" --output-on-failure --no-tests=error
 
-        if [[ "${{ matrix.compiler.import_std }}" == "TRUE" ]]; then
-          # Note: std module is currently supported only with libc++.
-          sudo apt install -y \
-            "libclang-rt-${clang_version}-dev" \
-            "libc++-${clang_version}-dev" \
-            "libc++abi-${clang_version}-dev" \
-            "clang-tools-${clang_version}"
-        fi
-
-    - name: Configure gcc
-      if: ${{ startsWith(matrix.compiler.cc, 'gcc') }}
+    - name: Require standard reflection tests
+      if: ${{ matrix.config.compiler == 'gcc-16' }}
       run: |
-        sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
-        sudo apt update
-        sudo apt install -y ${{ matrix.compiler.cxx }}
+        ctest --test-dir build -N -R "^(test-cpp26-reflection|test_std_reflection-auto-cpp26)$" | grep -q "Total Tests: 2"
 
-    - name: Install pinned CMake
-      if: ${{ matrix.compiler.modules == 'TRUE' }}
+  sanitize:
+    name: "${{ matrix.config.compiler }} / sanitizers"
+    timeout-minutes: 30
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - { os: ubuntu-26.04, compiler: "gcc-16" }
+        - { os: ubuntu-24.04, compiler: "clang-23" }
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-linux-compiler
+      with:
+        compiler: ${{ matrix.config.compiler }}
+
+    - name: Configure
+      env:
+        CXXFLAGS: -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+        LDFLAGS: -fsanitize=address,undefined
       run: |
-        if [[ "${{ matrix.compiler.import_std }}" == "TRUE" ]]; then
-          pip install cmake==4.4.0 --break-system-packages
+        # Newer runner kernels use more ASLR entropy than older sanitizer runtimes support.
+        sudo sysctl vm.mmap_rnd_bits=28
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+    - name: Build
+      run: cmake --build build --parallel "$(nproc)"
+
+    - name: Test
+      env:
+        ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+        UBSAN_OPTIONS: print_stacktrace=1
+      run: ctest --test-dir build --parallel "$(nproc)" --output-on-failure --no-tests=error
+
+  fmt:
+    name: "fmt ${{ matrix.config.fmt }} / ${{ matrix.config.compiler }}${{ matrix.config.stdlib && format(' / {0}', matrix.config.stdlib) || '' }}"
+    timeout-minutes: 30
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Distribution packages cover fmt 9 and 10. Newer releases are fetched by commit.
+        config:
+        - { os: ubuntu-24.04, compiler: "gcc-13", fmt: "9" }
+        - { os: ubuntu-26.04, compiler: "gcc-16", fmt: "10" }
+        - { os: ubuntu-26.04, compiler: "gcc-16", fmt: "11.2.0", commit: "40626af88bd7df9a5fb80be7b25ac85b122d6c21" }
+        - { os: ubuntu-26.04, compiler: "gcc-16", fmt: "12.2.1", commit: "208219daff58f2a7438f6931cc2ddc358acf33ef" }
+        - { os: ubuntu-24.04, compiler: "clang-23", stdlib: "libc++", fmt: "12.2.1", commit: "208219daff58f2a7438f6931cc2ddc358acf33ef" }
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-linux-compiler
+      with:
+        compiler: ${{ matrix.config.compiler }}
+        stdlib: ${{ matrix.config.stdlib || 'libstdc++' }}
+
+    - name: Install fmt
+      env:
+        FMT_VERSION: ${{ matrix.config.fmt }}
+        FMT_COMMIT: ${{ matrix.config.commit }}
+      run: |
+        if [[ -z "${FMT_COMMIT}" ]]; then
+          sudo apt-get update
+          sudo apt-get install -y libfmt-dev
+          dpkg-query -W -f='${Version}\n' libfmt-dev | tee /dev/stderr | grep -q "^${FMT_VERSION}\."
         else
-          pip install cmake==4.3.4 --break-system-packages
+          fmt_dir="${RUNNER_TEMP}/fmt"
+          git init -q "${fmt_dir}"
+          git -C "${fmt_dir}" fetch -q --depth 1 https://github.com/fmtlib/fmt.git "${FMT_COMMIT}"
+          git -C "${fmt_dir}" checkout -q FETCH_HEAD
+          echo "CXXFLAGS=-isystem ${fmt_dir}/include" >> "${GITHUB_ENV}"
         fi
 
-    - name: Configure Release
+    - name: Configure
       run: |
-        cmake -S . -B build-release \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DMAGIC_ENUM_OPT_ENABLE_NONASCII:BOOL=${{ matrix.compiler.nonascii }} \
-          -DMAGIC_ENUM_USE_MODULES:BOOL=${{ matrix.compiler.modules }} \
-          ${{ matrix.compiler.modules == 'TRUE' && '-G Ninja' || '' }}
-
-    - name: Build Release
-      run: cmake --build build-release --parallel --config Release
-
-    - name: Test Release
-      run: ctest --test-dir build-release --output-on-failure --no-tests=error -C Release
-
-    - name: Configure Debug
-      run: |
-        cmake -S . -B build-debug \
-          -DCMAKE_BUILD_TYPE=Debug \
-          -DMAGIC_ENUM_OPT_ENABLE_NONASCII:BOOL=${{ matrix.compiler.nonascii }} \
-          -DMAGIC_ENUM_USE_MODULES:BOOL=${{ matrix.compiler.modules }} \
-          ${{ matrix.compiler.modules == 'TRUE' && '-G Ninja' || '' }}
-
-    - name: Build Debug
-      run: cmake --build build-debug --parallel --config Debug
-
-    - name: Test Debug
-      run: ctest --test-dir build-debug --output-on-failure --no-tests=error -C Debug
-
-    - name: Configure with `import std;`
-      if: ${{ matrix.compiler.import_std == 'TRUE' }}
-      run: |
-        cxx_standard=23
-        stdlib_options=(-DCMAKE_CXX_FLAGS:STRING=-stdlib=libc++)
-        if [[ "${CC}" == gcc-* ]]; then
-          cxx_standard=26
-          stdlib_options=(-DCMAKE_CXX_STDLIB_MODULES_JSON="$("${CXX}" -print-file-name=libstdc++.modules.json)")
+        if [[ "${{ matrix.config.stdlib }}" == "libc++" ]]; then
+          export CXXFLAGS="${CXXFLAGS} -stdlib=libc++"
         fi
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMAGIC_ENUM_TEST_REQUIRE_FMT=ON -DMAGIC_ENUM_TEST_STRICT_WARNINGS=ON
 
-        cmake -S . -B build-import-std \
-          -DCMAKE_BUILD_TYPE=Debug \
-          -DCMAKE_EXPERIMENTAL_CXX_IMPORT_STD=f35a9ac6-8463-4d38-8eec-5d6008153e7d \
-          -DCMAKE_CXX_STANDARD="${cxx_standard}" \
-          -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-          -DCMAKE_CXX_EXTENSIONS=OFF \
-          -DMAGIC_ENUM_USE_MODULES:BOOL=TRUE \
-          -DMAGIC_ENUM_MODULE_IMPORT_STD:BOOL=TRUE \
-          -DMAGIC_ENUM_MODULE_WITH_FMT:BOOL=FALSE \
-          -GNinja \
-          "${stdlib_options[@]}"
-
-    - name: Build with `import std;`
-      if: ${{ matrix.compiler.import_std == 'TRUE' }}
-      run: cmake --build build-import-std --parallel --config Debug
-
-    - name: Test with `import std;`
-      if: ${{ matrix.compiler.import_std == 'TRUE' }}
-      run: ctest --test-dir build-import-std --output-on-failure --no-tests=error -C Debug
+    - name: Build and test
+      run: |
+        mapfile -t targets < <(ctest --test-dir build -N -R "^test_format" | awk '/Test +#/ { print $3 }')
+        cmake --build build --parallel "$(nproc)" --target "${targets[@]}"
+        ctest --test-dir build --parallel "$(nproc)" --output-on-failure --no-tests=error -R "^test_format"
 
   bazel:
     name: Bazel
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
+
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Test
       working-directory: test
@@ -151,23 +184,24 @@ jobs:
 
   meson:
     name: Meson
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
+
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Install Meson
       run: |
-        sudo apt update
-        sudo apt install -y meson ninja-build
-
-    - name: Configure
-      run: meson setup build-meson
+        sudo apt-get update
+        sudo apt-get install -y meson ninja-build
 
     - name: Test
-      run: meson test -C build-meson --print-errorlogs
-
-    - name: Configure with hash
-      run: meson setup build-meson-hash -Dhash=true
-
-    - name: Test with hash
-      run: meson test -C build-meson-hash --print-errorlogs
+      run: |
+        for option in false true; do
+          echo "::group::hash=$option"
+          meson setup "build-meson-$option" -Dhash="$option"
+          meson test -C "build-meson-$option" --print-errorlogs
+          echo "::endgroup::"
+        done
