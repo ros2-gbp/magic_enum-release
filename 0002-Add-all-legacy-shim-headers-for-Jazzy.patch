@@ -1,4 +1,4 @@
-From 12f640417984431ed644872937f17968a39bbf9d Mon Sep 17 00:00:00 2001
+From de30c472395c1b45e03dc5c83e76d32d551b4e1d Mon Sep 17 00:00:00 2001
 From: Tim Clephas <tim.clephas@nobleo.nl>
 Date: Thu, 4 Dec 2025 13:53:41 +0100
 Subject: [PATCH 2/2] Add all legacy shim headers for Jazzy
@@ -24,10 +24,10 @@ Subject: [PATCH 2/2] Add all legacy shim headers for Jazzy
  create mode 100644 include/magic_enum_utility.hpp
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 06628f6..cd062cd 100644
+index 58f9941..919824c 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -89,7 +89,16 @@ if(MAGIC_ENUM_OPT_INSTALL)
+@@ -212,7 +212,16 @@ if(MAGIC_ENUM_OPT_INSTALL)
    # Install legacy shim header (packaging-added) for backward compatibility.
    # Provides <magic_enum.hpp> forwarding to <magic_enum/magic_enum.hpp>.
    install(
