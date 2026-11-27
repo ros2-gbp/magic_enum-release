@@ -1,125 +1,453 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
-//
-// Permission is hereby  granted, free of charge, to any  person obtaining a copy
-// of this software and associated  documentation files (the "Software"), to deal
-// in the Software  without restriction, including without  limitation the rights
-// to  use, copy,  modify, merge,  publish, distribute,  sublicense, and/or  sell
-// copies  of  the Software,  and  to  permit persons  to  whom  the Software  is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE  IS PROVIDED "AS  IS", WITHOUT WARRANTY  OF ANY KIND,  EXPRESS OR
-// IMPLIED,  INCLUDING BUT  NOT  LIMITED TO  THE  WARRANTIES OF  MERCHANTABILITY,
-// FITNESS FOR  A PARTICULAR PURPOSE AND  NONINFRINGEMENT. IN NO EVENT  SHALL THE
-// AUTHORS  OR COPYRIGHT  HOLDERS  BE  LIABLE FOR  ANY  CLAIM,  DAMAGES OR  OTHER
-// LIABILITY, WHETHER IN AN ACTION OF  CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4244) // warning C4244: 'argument': conversion from 'const T' to 'unsigned int', possible loss of data.
-#endif
+#include <doctest/doctest.h>
 
-#define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
+#include "test_flags_enums.hpp"
 
-#include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_bitwise.hpp>
 #include <magic_enum/magic_enum_flags.hpp>
 #include <magic_enum/magic_enum_fuse.hpp>
-#include <magic_enum/magic_enum_iostream.hpp>
-#include <magic_enum/magic_enum_utility.hpp>
+#include <magic_enum/magic_enum_switch.hpp>
+
+#include "test_fixed_string.hpp"
+#include "test_helpers.hpp"
 
 #include <array>
 #include <cctype>
+#include <limits>
+#include <string>
 #include <string_view>
-#include <sstream>
 
-enum class Color { RED = 1, GREEN = 2, BLUE = 4 };
-template <>
-struct magic_enum::customize::enum_range<Color> {
-  static constexpr bool is_flags = true;
+template <int>
+struct templated_flags_scope {
+  enum class Value : unsigned { None = 0, A = 1, B = 4 };
 };
 
-namespace Namespace {
-    enum class Numbers : int {
-        none = 0,
-        one = 1 << 1,
-        two = 1 << 2,
-        three = 1 << 3,
-        many = 1 << 30,
-    };
-    auto magic_enum_define_range_adl(Numbers)
-    {
-      return magic_enum::customize::adl_info().flag<true>();
-    }
+TEST_CASE("class-template flags reflect before enumerator access") {
+  using namespace magic_enum;
+  CHECK(enum_flags_name(static_cast<templated_flags_scope<0>::Value>(5)) == "A|B");
+  static_assert(enum_flags_cast<templated_flags_scope<1>::Value>("A|B") == static_cast<templated_flags_scope<1>::Value>(5));
+  static_assert(enum_flags_contains(static_cast<templated_flags_scope<2>::Value>(5)));
+  CHECK(enum_flags_name(static_cast<templated_flags_scope<3>::Value>(0)) == "None");
 }
-using Namespace::Numbers;
 
-enum Directions : std::uint64_t {
-  NoDirection = 0,
-  Left = std::uint64_t{1} << 10,
-  Down = std::uint64_t{1} << 20,
-  Up = std::uint64_t{1} << 31,
-  Right = std::uint64_t{1} << 63,
-};
+enum class InvalidFlagsSetting { Value };
 template <>
-struct magic_enum::customize::enum_range<Directions> {
+struct magic_enum::customize::enum_range<InvalidFlagsSetting> {
+  static constexpr int is_flags = 1;
+};
+
+static_assert(!magic_enum::is_flags_enum_v<InvalidFlagsSetting&>);
+
+enum class ZeroFlags : std::uint8_t { None = 0, A = 1, B = 2, Both = 3 };
+template <>
+struct magic_enum::customize::enum_range<ZeroFlags> {
   static constexpr bool is_flags = true;
 };
 
-enum number : unsigned long {
-  no_number = 0,
-  one = 1 << 1,
-  two = 1 << 2,
-  three = 1 << 3,
-  four = 1 << 4,
-#if defined(MAGIC_ENUM_SUPPORTED_ALIASES)
-  _1 = one,
-  _2 = two,
-  _3 = three,
-  _4 = four
-#endif
-};
+enum class OnlyZeroFlags : std::uint8_t { None = 0 };
 template <>
-struct magic_enum::customize::enum_range<number> {
+struct magic_enum::customize::enum_range<OnlyZeroFlags> {
   static constexpr bool is_flags = true;
 };
 
-enum CStyleFlags {
-    CStyleFlags_A = 1 << 0,
-    CStyleFlags_B = 1 << 1,
-    CStyleFlags_C = 1 << 2,
-    CStyleFlags_D = 1 << 3,
-    CStyleFlags_E = 1 << 4,
-    CStyleFlags_F = 1 << 5,
-    CStyleFlags_G = 1 << 6,
-    CStyleFlags_H = 1 << 7,
-    CStyleFlags_I = 1 << 8,
-};
-
+enum class HighBitFlags : unsigned { A = 1, Both = 3, High = 128 };
 template <>
-struct magic_enum::customize::enum_range<CStyleFlags> {
-    static constexpr bool is_flags = true;
-    static constexpr auto prefix_length = sizeof("CStyleFlags_")-1;
+struct magic_enum::customize::enum_range<HighBitFlags> {
+  static constexpr bool is_flags = true;
 };
 
-#include <magic_enum/magic_enum.hpp>
-#include <magic_enum/magic_enum_fuse.hpp>
+enum class SignedZeroFlags : std::int8_t { High = -128, None = 0, Low = 1 };
+template <>
+struct magic_enum::customize::enum_range<SignedZeroFlags> {
+  static constexpr bool is_flags = true;
+};
+
+enum class HiddenZeroFlags : std::uint8_t { None = 0, A = 1, B = 2 };
+template <>
+struct magic_enum::customize::enum_range<HiddenZeroFlags> {
+  static constexpr bool is_flags = true;
+};
+template <>
+constexpr magic_enum::customize::customize_t magic_enum::customize::enum_name<HiddenZeroFlags>(HiddenZeroFlags value) noexcept {
+  return value == HiddenZeroFlags::None ? customize_t{invalid_tag} : customize_t{default_tag};
+}
+
+enum class RenamedZeroFlags : std::uint8_t { None = 0, A = 1, B = 2 };
+template <>
+struct magic_enum::customize::enum_range<RenamedZeroFlags> {
+  static constexpr bool is_flags = true;
+};
+template <>
+constexpr magic_enum::customize::customize_t magic_enum::customize::enum_name<RenamedZeroFlags>(RenamedZeroFlags value) noexcept {
+  return value == RenamedZeroFlags::None ? customize_t{"Nothing"} : customize_t{default_tag};
+}
 
 using namespace magic_enum;
 using namespace magic_enum::bitwise_operators;
+using namespace magic_enum_tests;
+
+using namespace flags_test;
+
+struct LvalueOnlyPredicate {
+  constexpr bool operator()(char lhs, char rhs) & noexcept { return lhs == rhs; }
+};
+
+TEST_CASE("enum_reflected") {
+  REQUIRE(enum_reflected<Color>(Color::RED));
+  REQUIRE(enum_reflected<as_flags<>>(Color::RED));
+  REQUIRE(enum_reflected<Color, as_flags<>>(Color::BLUE));
+  REQUIRE(enum_reflected<Directions>(Directions::Left));
+  REQUIRE(enum_reflected<Directions>(Directions::Right));
+  REQUIRE(enum_reflected<Directions>(std::uint64_t{1} << 62));
+  REQUIRE(enum_reflected<Directions>(Directions::NoDirection));
+  REQUIRE_FALSE(enum_reflected<Directions>(Directions::Left | Directions::Down));
+  REQUIRE_FALSE(enum_reflected<Directions>(std::uint64_t{3}));
+  REQUIRE(enum_reflected(BoolFlags::Disabled));
+  REQUIRE(enum_reflected(BoolFlags::Enabled));
+  REQUIRE(enum_reflected<BoolFlags, as_common<>>(BoolFlags::Disabled));
+  REQUIRE(enum_reflected<BoolFlags, as_common<>>(BoolFlags::Enabled));
+#if defined(MAGIC_ENUM_TEST_STD_REFLECTION)
+  REQUIRE(enum_reflected<Directions, as_common<>>(Directions::Left));
+#else
+  REQUIRE_FALSE(enum_reflected<Directions, as_common<>>(Directions::Left));
+#endif
+  REQUIRE_FALSE(enum_contains<Directions>(std::uint64_t{1} << 62));
+}
+
+TEST_CASE("as_common<> on flags allows bits outside the common range") {
+  using namespace magic_enum;
+  static_assert(enum_name<as_common<>>(HighBitFlags::Both) == "Both");
+#if defined(MAGIC_ENUM_TEST_STD_REFLECTION)
+  static_assert(enum_count<HighBitFlags, as_common<>>() == 3);
+#else
+  static_assert(enum_count<HighBitFlags, as_common<>>() == 2);
+#endif
+}
+
+TEST_CASE("enum_reflected separates the flags domain from membership and masks") {
+  enum class ReflF : std::uint8_t { None = 0, A = 1, B = 2, Both = 3 };
+  constexpr auto flags = as_flags<true>;
+
+  static_assert(!enum_reflected<ReflF, flags>(257));
+  static_assert(!enum_reflected<ReflF, flags>(-1));
+  static_assert(enum_reflected<ReflF, flags>(0));
+  static_assert(enum_reflected<ReflF, flags>(4));
+  static_assert(enum_reflected<ReflF, flags>(128));
+  static_assert(!enum_contains<ReflF, flags>(4));
+  static_assert(!enum_reflected<ReflF, flags>(3));
+  static_assert(!enum_reflected<flags>(ReflF::Both));
+  static_assert(enum_flags_contains<ReflF>(3));
+  static_assert(!enum_flags_contains<ReflF>(4));
+
+  static_assert(enum_reflected<BoolFlags>(0));
+  static_assert(enum_reflected<BoolFlags>(1));
+  static_assert(!enum_reflected<BoolFlags>(2));
+
+  enum class ReflInt8Flags : std::int8_t { Low = 1, High = -128 };
+  enum class ReflInt64Flags : std::int64_t { Low = 1 };
+  static_assert(enum_reflected<ReflInt8Flags, flags>(-128));
+  static_assert(enum_reflected<ReflInt8Flags, flags>(64));
+  static_assert(!enum_reflected<ReflInt8Flags, flags>(-127));
+  static_assert(!enum_reflected<ReflInt8Flags, flags>(128));
+  static_assert(enum_reflected<ReflInt64Flags, flags>((std::numeric_limits<std::int64_t>::min)()));
+  static_assert(!enum_reflected<ReflInt64Flags, flags>((std::numeric_limits<std::uint64_t>::max)()));
+
+  enum class ReflEmptyFlags : std::uint8_t {};
+  static_assert(enum_reflected<ReflEmptyFlags, flags>(0));
+  static_assert(enum_reflected<ReflEmptyFlags, flags>(64));
+  static_assert(!enum_reflected<ReflEmptyFlags, flags>(65));
+}
+
+TEST_CASE("bool flag text lookup does not convert pointers to true") {
+  static_assert(enum_cast<BoolFlags>("Enabled") == BoolFlags::Enabled);
+  static_assert(enum_cast<BoolFlags>("Disabled") == BoolFlags::Disabled);
+  static_assert(!enum_cast<BoolFlags>("INVALID").has_value());
+  static_assert(!enum_cast<BoolFlags>("").has_value());
+  static_assert(enum_cast<BoolFlags, as_common<>>("Disabled") == BoolFlags::Disabled);
+  static_assert(enum_contains<BoolFlags>("Disabled"));
+  static_assert(!enum_contains<BoolFlags>("INVALID"));
+  static_assert(enum_flags_cast<BoolFlags>("Enabled") == BoolFlags::Enabled);
+  static_assert(enum_flags_cast<BoolFlags>("Disabled") == BoolFlags::Disabled);
+  static_assert(!enum_flags_cast<BoolFlags>("INVALID").has_value());
+  static_assert(!enum_flags_cast<BoolFlags>("").has_value());
+  static_assert(!enum_flags_contains<BoolFlags>("INVALID"));
+  static_assert(!enum_flags_contains<BoolFlags>(""));
+  const char* invalid = "INVALID";
+  CHECK_FALSE(enum_flags_cast<BoolFlags>(invalid).has_value());
+  CHECK_FALSE(enum_flags_contains<BoolFlags>(invalid));
+  CHECK(enum_flags_cast<BoolFlags>("enabled", '|', case_insensitive) == BoolFlags::Enabled);
+}
+
+TEST_CASE("bool flags reflect the named zero") {
+  constexpr auto enabled_name = string_view{"Enabled"};
+  constexpr auto common_values = enum_values<BoolFlags, as_common<>>();
+  static_assert(common_values.size() == 2);
+  static_assert(common_values[0] == BoolFlags::Disabled);
+  static_assert(common_values[1] == BoolFlags::Enabled);
+  constexpr auto flag_values = enum_values<BoolFlags>();
+  static_assert(flag_values.size() == 2);
+  static_assert(flag_values[0] == BoolFlags::Disabled);
+  static_assert(flag_values[1] == BoolFlags::Enabled);
+  CHECK(enum_flags_name(BoolFlags::Disabled) == "Disabled");
+  CHECK(enum_flags_name(BoolFlags::Enabled) == "Enabled");
+  static_assert(enum_flags_cast<BoolFlags>(false) == BoolFlags::Disabled);
+  static_assert(enum_flags_cast<BoolFlags>(true) == BoolFlags::Enabled);
+  static_assert(enum_flags_cast<BoolFlags>(enabled_name) == BoolFlags::Enabled);
+  static_assert(enum_flags_cast<BoolFlags>(string_view{"Disabled"}) == BoolFlags::Disabled);
+  static_assert(enum_cast<BoolFlags, as_common<>>(string_view{"Disabled"}) == BoolFlags::Disabled);
+  static_assert(enum_cast<BoolFlags, as_common<>>(string_view{"Enabled"}) == BoolFlags::Enabled);
+  static_assert(enum_contains<BoolFlags, as_common<>>(string_view{"Disabled"}));
+  static_assert(enum_flags_contains<BoolFlags>(enabled_name));
+  static_assert(enum_flags_contains<BoolFlags>(string_view{"Disabled"}));
+  static_assert(enum_flags_test(BoolFlags::Enabled, BoolFlags::Enabled));
+  static_assert(!enum_flags_test(BoolFlags::Disabled, BoolFlags::Enabled));
+  static_assert(enum_flags_test_any(BoolFlags::Enabled, BoolFlags::Enabled));
+  static_assert(!enum_flags_test_any(BoolFlags::Disabled, BoolFlags::Enabled));
+}
+
+TEST_CASE("named composite flags require every constituent bit") {
+  // A named combination does not supply an otherwise unnamed bit, see #409.
+  enum class MissingBit : std::uint8_t { System = 1, Null = 2, Binary = 4, Autoincrement = 12 };
+  enum class CompleteBits : std::uint8_t { System = 1, Null = 2, Binary = 4, Empty = 8, Autoincrement = 12 };
+
+  static_assert(enum_count<MissingBit, as_flags<false>>() == 4);
+  static_assert(enum_count<MissingBit, as_flags<true>>() == 3);
+  static_assert(enum_count<CompleteBits, as_flags<true>>() == 4);
+  static_assert(enum_cast<MissingBit, as_flags<false>>(12) == MissingBit::Autoincrement);
+  static_assert(!enum_flags_cast<MissingBit>(12).has_value());
+  static_assert(enum_flags_cast<CompleteBits>(12) == CompleteBits::Autoincrement);
+  static_assert(!enum_flags_cast<CompleteBits>("Autoincrement").has_value());
+  CHECK(enum_flags_name(MissingBit::Autoincrement).empty());
+  CHECK(enum_flags_name(CompleteBits::Autoincrement) == "Binary|Empty");
+  // The compile-time form names any declared value regardless of the flags mode.
+  static_assert(enum_name<CompleteBits::Autoincrement>() == "Autoincrement");
+  CHECK(enum_name<as_flags<true>>(CompleteBits::Autoincrement).empty());
+}
+
+TEST_CASE("signed flags include the sign bit") {
+  enum class Int8Flags : std::int8_t { Low = 1, Mid = 4, High = -128 };
+  enum class Int64Flags : std::int64_t { Low = 1, High = std::numeric_limits<std::int64_t>::min() };
+  constexpr auto flags = as_flags<true>;
+
+  constexpr auto values = enum_values<Int8Flags, flags>();
+  static_assert(values.size() == 3);
+  static_assert(values[0] == Int8Flags::High);
+  static_assert(values[1] == Int8Flags::Low);
+  static_assert(values[2] == Int8Flags::Mid);
+  static_assert(enum_min<Int8Flags, flags>() == Int8Flags::High);
+  static_assert(enum_max<Int8Flags, flags>() == Int8Flags::Mid);
+  static_assert(enum_index<Int8Flags, flags>(Int8Flags::High).value() == 0);
+  static_assert(enum_value<Int8Flags, flags>(0) == Int8Flags::High);
+  static_assert(enum_reflected<Int8Flags, flags>(std::int8_t{-128}));
+  static_assert(enum_cast<Int8Flags, flags>(-128) == Int8Flags::High);
+  static_assert(enum_flags_cast<Int8Flags>(-127) == static_cast<Int8Flags>(-127));
+  static_assert(!enum_flags_cast<Int8Flags>(-126).has_value());
+  static_assert(enum_flags_cast<Int8Flags>("Low|High") == static_cast<Int8Flags>(-127));
+  CHECK(enum_name<Int8Flags, flags>(Int8Flags::High) == "High");
+  CHECK(enum_flags_name(static_cast<Int8Flags>(-127)) == "High|Low");
+
+  static_assert(enum_count<Int64Flags, flags>() == 2);
+  static_assert(enum_values<Int64Flags, flags>()[0] == Int64Flags::High);
+  static_assert(enum_flags_cast<Int64Flags>("High|Low") == static_cast<Int64Flags>(std::numeric_limits<std::int64_t>::min() + 1));
+  CHECK(enum_flags_name(static_cast<Int64Flags>(std::numeric_limits<std::int64_t>::min() + 1)) == "High|Low");
+}
+
+TEST_CASE("unfixed flags reach the top bit of their range") {
+  // The ranges are [0, 2^31 - 1] and [-2^30, 2^30 - 1], below the limits of the underlying type.
+  enum UnfixedHigh { UH_Low = 1, UH_High = 1 << 30 };
+  enum UnfixedSigned { US_Neg = -1, US_Low = 1, US_High = 1 << 29 };
+  constexpr auto flags = as_flags<true>;
+
+  static_assert(enum_count<UnfixedHigh, flags>() == 2);
+  static_assert(enum_values<UnfixedHigh, flags>()[1] == UH_High);
+  static_assert(enum_count<UnfixedSigned, flags>() == 2);
+  static_assert(enum_values<UnfixedSigned, flags>()[1] == US_High);
+  CHECK(enum_flags_name(UH_High) == "UH_High");
+  CHECK(enum_flags_name(US_Low | US_High) == "US_Low|US_High");
+}
+
+TEST_CASE("flags name with a custom String") {
+  using Name = FixedString<16>;
+  static_assert(std::is_same_v<decltype(enum_flags_name(Color::RED)), std::string>);
+  static_assert(std::is_same_v<decltype(enum_flags_name<Color, Name>(Color::RED)), Name>);
+  static_assert(enum_flags_name<Color, Name>(Color::RED | Color::BLUE) == "RED|BLUE");
+  static_assert(enum_flags_name<const Color&, Name>(Color::RED | Color::BLUE, ',') == "RED,BLUE");
+  static_assert(enum_flags_name<ZeroFlags, Name>(ZeroFlags::None) == "None");
+  static_assert(enum_flags_name<ZeroFlags, Name>(static_cast<ZeroFlags>(4)).empty());
+  static_assert(enum_flags_name<Color, Name>(Color{0}).empty());
+  static_assert(!enum_flags_name<Color, Name>(Color::RED | Color::GREEN).overflow);
+
+  // Overflow belongs to String. This one drops the tail and records it.
+  constexpr auto truncated = enum_flags_name<Color, FixedString<4>>(Color::RED | Color::GREEN);
+  static_assert(truncated == "RED|" && truncated.overflow);
+
+  auto runtime = Color::GREEN;
+  runtime |= Color::BLUE;
+  CHECK(enum_flags_name<Color, Name>(runtime) == "GREEN|BLUE");
+  CHECK(enum_flags_name<Color, std::string>(runtime) == "GREEN|BLUE");
+}
+
+TEST_CASE("named zero is a flag value") {
+  constexpr auto values = enum_values<ZeroFlags>();
+  static_assert(values.size() == 3);
+  static_assert(values[0] == ZeroFlags::None);
+  static_assert(values[1] == ZeroFlags::A);
+  static_assert(values[2] == ZeroFlags::B);
+  static_assert(enum_index(ZeroFlags::None) == std::size_t{0});
+  static_assert(enum_index(ZeroFlags::B) == std::size_t{2});
+  static_assert(enum_value<ZeroFlags>(0) == ZeroFlags::None);
+  static_assert(enum_value<ZeroFlags>(2) == ZeroFlags::B);
+  static_assert(enum_min<ZeroFlags>() == ZeroFlags::None);
+  static_assert(enum_contains(ZeroFlags::None));
+  static_assert(!enum_contains(ZeroFlags::Both));
+  static_assert(enum_name(ZeroFlags::None) == "None");
+  CHECK(enum_flags_name(ZeroFlags::None) == "None");
+  CHECK(enum_flags_name(ZeroFlags::Both) == "A|B");
+  CHECK(enum_flags_name(ZeroFlags::A) == "A");
+  CHECK(enum_flags_name(static_cast<ZeroFlags>(4)).empty());
+  static_assert(enum_flags_cast<ZeroFlags>(0) == ZeroFlags::None);
+  static_assert(enum_flags_cast<ZeroFlags>({}) == ZeroFlags::None);
+  static_assert(enum_flags_cast<ZeroFlags>(3) == ZeroFlags::Both);
+  static_assert(enum_flags_contains<ZeroFlags>(0));
+  static_assert(enum_flags_contains<ZeroFlags>({}));
+  static_assert(enum_flags_contains(ZeroFlags::None));
+  static_assert(enum_flags_cast<ZeroFlags>("None") == ZeroFlags::None);
+  static_assert(enum_flags_cast<ZeroFlags>("None|A") == ZeroFlags::A);
+  static_assert(enum_flags_cast<ZeroFlags>("None|None") == ZeroFlags::None);
+  static_assert(enum_flags_cast<ZeroFlags>("None|") == ZeroFlags::None);
+  static_assert(!enum_flags_cast<ZeroFlags>("").has_value());
+  static_assert(!enum_flags_cast<ZeroFlags>("|None").has_value());
+  static_assert(!enum_flags_cast<ZeroFlags>("Both").has_value());
+  static_assert(!enum_flags_test(ZeroFlags::Both, ZeroFlags::None));
+  static_assert(!enum_flags_test(ZeroFlags::None, ZeroFlags::None));
+  static_assert(!enum_flags_test_any(ZeroFlags::Both, ZeroFlags::None));
+  static_assert(enum_switch<int>([](auto val) { return val() == ZeroFlags::None ? 1 : 2; }, ZeroFlags::None, -1) == 1);
+  static_assert(enum_fuse(ZeroFlags::None, ZeroFlags::A) != enum_fuse(ZeroFlags::A, ZeroFlags::None));
+
+  for (std::size_t i = 0; i < enum_count<ZeroFlags>(); ++i) {
+    CHECK(enum_index(enum_value<ZeroFlags>(i)) == i);
+  }
+}
+
+TEST_CASE("only named zero is a non-empty flag enum") {
+  static_assert(enum_count<OnlyZeroFlags>() == 1);
+  static_assert(enum_values<OnlyZeroFlags>()[0] == OnlyZeroFlags::None);
+  static_assert(enum_index(OnlyZeroFlags::None) == std::size_t{0});
+  static_assert(enum_value<OnlyZeroFlags>(0) == OnlyZeroFlags::None);
+  CHECK(enum_flags_name(OnlyZeroFlags::None) == "None");
+  CHECK(enum_flags_name(static_cast<OnlyZeroFlags>(1)).empty());
+  static_assert(enum_flags_cast<OnlyZeroFlags>(0) == OnlyZeroFlags::None);
+  static_assert(!enum_flags_cast<OnlyZeroFlags>(1).has_value());
+  static_assert(enum_flags_cast<OnlyZeroFlags>("None") == OnlyZeroFlags::None);
+}
+
+TEST_CASE("named zero precedes the bits after the sign bit") {
+  constexpr auto values = enum_values<SignedZeroFlags>();
+  static_assert(values.size() == 3);
+  static_assert(values[0] == SignedZeroFlags::High);
+  static_assert(values[1] == SignedZeroFlags::None);
+  static_assert(values[2] == SignedZeroFlags::Low);
+  static_assert(enum_index(SignedZeroFlags::None) == std::size_t{1});
+  static_assert(enum_value<SignedZeroFlags>(1) == SignedZeroFlags::None);
+  static_assert(enum_flags_cast<SignedZeroFlags>(0) == SignedZeroFlags::None);
+  CHECK(enum_flags_name(SignedZeroFlags::None) == "None");
+  CHECK(enum_flags_name(static_cast<SignedZeroFlags>(-127)) == "High|Low");
+
+  for (std::size_t i = 0; i < enum_count<SignedZeroFlags>(); ++i) {
+    CHECK(enum_index(enum_value<SignedZeroFlags>(i)) == i);
+  }
+}
+
+TEST_CASE("customization decides whether zero is a flag value") {
+  // invalid_tag hides zero in both modes, not only from flags. enum_reflected checks only the domain.
+  static_assert(enum_count<HiddenZeroFlags>() == 2);
+  static_assert(enum_values<HiddenZeroFlags>()[0] == HiddenZeroFlags::A);
+  static_assert(!enum_flags_cast<HiddenZeroFlags>(0).has_value());
+  static_assert(!enum_flags_cast<HiddenZeroFlags>("None").has_value());
+  static_assert(enum_reflected<HiddenZeroFlags>(0));
+  static_assert(!enum_cast<HiddenZeroFlags, as_common<>>(0).has_value());
+  CHECK(enum_flags_name(HiddenZeroFlags::None).empty());
+  CHECK(enum_name<as_common<>>(HiddenZeroFlags::None).empty());
+
+  // A custom name renames a declared zero. An undeclared one is a compile-fail test.
+  static_assert(enum_count<RenamedZeroFlags>() == 3);
+  static_assert(enum_flags_cast<RenamedZeroFlags>("Nothing") == RenamedZeroFlags::None);
+  CHECK(enum_flags_name(RenamedZeroFlags::None) == "Nothing");
+}
+
+TEST_CASE("flags string lookup keeps function pointer types") {
+  using Pred = std::equal_to<>;
+  constexpr optional<Color> (*cast)(string_view, char_type, Pred) noexcept = &enum_flags_cast<Color>;
+  constexpr bool (*contains)(string_view, char_type, Pred) noexcept = &enum_flags_contains<Color>;
+  REQUIRE(cast("RED|GREEN", '|', Pred{}) == (Color::RED | Color::GREEN));
+  REQUIRE(contains("RED", '|', Pred{}));
+  REQUIRE_FALSE(contains("None", '|', Pred{}));
+}
+
+TEST_CASE("braced flags arguments preserve zero behavior") {
+  constexpr auto none = enum_flags_cast<Numbers>({});
+  REQUIRE(none == Numbers::none);
+}
+
+TEST_CASE("integer flags cast checks the value before narrowing") {
+  enum class U8Flags : std::uint8_t { A = 1, B = 2 };
+  enum class I8Flags : std::int8_t { A = 1, High = -128 };
+
+  static_assert(enum_flags_cast<U8Flags>(3) == static_cast<U8Flags>(3));
+  static_assert(!enum_flags_cast<U8Flags>(257).has_value());
+  static_assert(!enum_flags_contains<U8Flags>(258));
+  static_assert(enum_flags_cast<I8Flags>(-127) == static_cast<I8Flags>(-127));
+  static_assert(!enum_flags_cast<I8Flags>(129).has_value());
+  static_assert(!enum_flags_cast<BoolFlags>(2).has_value());
+  static_assert(!enum_flags_contains<BoolFlags>(2));
+
+  // Wider arguments keep their sign, so INT64_MIN does not become bit 63.
+  enum class Wide : std::uint64_t { Low = 1, High = std::uint64_t{1} << 63 };
+  static_assert(enum_flags_cast<Wide>(std::uint64_t{1} << 63) == Wide::High);
+  static_assert(!enum_flags_cast<Wide>((std::numeric_limits<std::int64_t>::min)()).has_value());
+  static_assert(!enum_flags_contains<Wide>(-1));
+  static_assert(!enum_flags_cast<I8Flags>((std::numeric_limits<std::uint64_t>::max)()).has_value());
+  static_assert(enum_flags_cast<I8Flags>(std::int64_t{-128}) == I8Flags::High);
+}
 
 TEST_CASE("enum_cast") {
-  SECTION("string") {
+  SUBCASE("noncopyable predicate is shared across flag names") {
+    struct Predicate {
+      int calls = 0;
+      Predicate() = default;
+      Predicate(const Predicate&) = delete;
+      bool operator()(const char& lhs, const char& rhs) & noexcept {
+        ++calls;
+        return lhs == rhs;
+      }
+    };
+    Predicate predicate;
+    REQUIRE(enum_flags_cast<Color, Predicate&>("RED|BLUE", '|', predicate) == (Color::RED | Color::BLUE));
+    REQUIRE(predicate.calls > 0);
+  }
+
+  SUBCASE("colliding flag names") {
+    enum class Flags { costarring = 1, liquid = 2 };
+    static_assert(enum_flags_cast<Flags>("costarring") == Flags::costarring);
+    static_assert(enum_flags_cast<Flags>("liquid") == Flags::liquid);
+    static_assert(enum_flags_cast<Flags>("costarring|liquid") == static_cast<Flags>(3));
+    REQUIRE(enum_flags_cast<Flags>("liquid|costarring|liquid") == static_cast<Flags>(3));
+    REQUIRE_FALSE(enum_flags_cast<Flags>("liquids").has_value());
+  }
+
+  SUBCASE("predicates receive character references") {
+    static_assert(enum_flags_cast<Color>("RED|GREEN", '|', ConstReferencePredicate{}) == (Color::RED | Color::GREEN));
+    static_assert(enum_flags_contains<Color>("RED|GREEN", '|', ConstReferencePredicate{}));
+    static_assert(!noexcept(enum_flags_cast<Color>("RED", '|', ThrowingReferencePredicate{})));
+    static_assert(!noexcept(enum_flags_contains<Color>("RED", '|', ThrowingReferencePredicate{})));
+    REQUIRE_THROWS_AS(static_cast<void>(enum_flags_cast<Color>("RED", '|', ThrowingReferencePredicate{})), int);
+    REQUIRE_THROWS_AS(static_cast<void>(enum_flags_contains<Color>("RED", '|', ThrowingReferencePredicate{})), int);
+  }
+
+  SUBCASE("string") {
     constexpr auto cr = enum_cast<Color>("RED");
     REQUIRE(cr.value() == Color::RED);
     REQUIRE(enum_cast<Color&>("GREEN").value() == Color::GREEN);
@@ -134,7 +462,13 @@ TEST_CASE("enum_cast") {
     REQUIRE(enum_flags_cast<Color>("blue", '|', [](char lhs, char rhs) { return std::tolower(lhs) == std::tolower(rhs); }).value() == Color::BLUE);
     REQUIRE(enum_flags_cast<Color&>("blue|RED", '|', [](char lhs, char rhs) { return std::tolower(lhs) == std::tolower(rhs); }).value() == (Color::BLUE | Color::RED));
     REQUIRE(enum_flags_cast<Color&>("GREEN|RED").value() == (Color::GREEN | Color::RED));
+    constexpr auto constexpr_repeated_flags = enum_flags_cast<Color&>("GREEN|RED|RED");
+    static_assert(constexpr_repeated_flags.has_value());
+    static_assert(*constexpr_repeated_flags == (Color::GREEN | Color::RED));
     REQUIRE(enum_flags_cast<Color&>("GREEN|RED|RED").value() == (Color::GREEN | Color::RED));
+    REQUIRE(enum_flags_cast<Color&>("GREEN|").value() == Color::GREEN);
+    REQUIRE_FALSE(enum_flags_cast<Color&>("|GREEN").has_value());
+    REQUIRE_FALSE(enum_flags_cast<Color&>("GREEN||RED").has_value());
     REQUIRE_FALSE(enum_flags_cast<Color&>("GREEN|RED|None").has_value());
     REQUIRE_FALSE(enum_flags_cast<Color>("None").has_value());
 
@@ -144,13 +478,12 @@ TEST_CASE("enum_cast") {
     REQUIRE(enum_flags_cast<CStyleFlags>("H|I|F|F|F").value() == (CStyleFlags_H | CStyleFlags_I | CStyleFlags_F));
     REQUIRE(enum_flags_cast<CStyleFlags>("E|B|C|A").value() == (CStyleFlags_A | CStyleFlags_B | CStyleFlags_C | CStyleFlags_E));
 
-    // Test custom separator
+    // Custom separator.
     REQUIRE(enum_flags_cast<Color>("GREEN,RED", ',').value() == (Color::GREEN | Color::RED));
     REQUIRE(enum_flags_cast<Color>("GREEN,RED,BLUE", ',').value() == (Color::GREEN | Color::RED | Color::BLUE));
     REQUIRE(enum_flags_cast<Color>("red,green", ',', [](char lhs, char rhs) { return std::tolower(lhs) == std::tolower(rhs); }).value() == (Color::RED | Color::GREEN));
     REQUIRE_FALSE(enum_flags_cast<Color>("GREEN,RED,None", ',').has_value());
     REQUIRE(enum_flags_cast<CStyleFlags>("A,B,C", ',').value() == (CStyleFlags_A | CStyleFlags_B | CStyleFlags_C));
-
 
     constexpr auto no = enum_cast<Numbers>("one");
     REQUIRE(no.value() == Numbers::one);
@@ -175,7 +508,7 @@ TEST_CASE("enum_cast") {
     REQUIRE_FALSE(enum_cast<number>("None").has_value());
   }
 
-  SECTION("integer") {
+  SUBCASE("integer") {
     Color cm[3] = {Color::RED, Color::GREEN, Color::BLUE};
     constexpr auto cr = enum_cast<Color>(1);
     REQUIRE(cr.value() == Color::RED);
@@ -192,6 +525,8 @@ TEST_CASE("enum_cast") {
     REQUIRE(enum_flags_cast<Color>(1 | 2 | 1).value() == (Color::GREEN | Color::RED));
     REQUIRE_FALSE(enum_flags_cast<Color>(1 | 2 | 8).has_value());
     REQUIRE_FALSE(enum_flags_cast<Color>(0).has_value());
+    REQUIRE_FALSE(enum_flags_cast<number>(1 | 2).has_value());
+    REQUIRE_FALSE(enum_flags_contains<number>(1 | 2));
 
     constexpr auto no = enum_cast<Numbers>(2);
     REQUIRE(no.value() == Numbers::one);
@@ -199,14 +534,14 @@ TEST_CASE("enum_cast") {
     REQUIRE(enum_cast<Numbers>(8).value() == Numbers::three);
     REQUIRE(enum_cast<Numbers>(1 << 30).value() == Numbers::many);
     REQUIRE_FALSE(enum_cast<Numbers>(127).has_value());
-    REQUIRE_FALSE(enum_cast<Numbers>(0).has_value());
+    REQUIRE(enum_cast<Numbers>(0) == Numbers::none);
 
     constexpr auto dr = enum_cast<Directions>(std::uint64_t{1} << 63);
     REQUIRE(enum_cast<Directions&>(std::uint64_t{1} << 31).value() == Directions::Up);
     REQUIRE(enum_cast<const Directions>(std::uint64_t{1} << 20).value() == Directions::Down);
     REQUIRE(dr.value() == Directions::Right);
     REQUIRE(enum_cast<Directions>(std::uint64_t{1} << 10).value() == Directions::Left);
-    REQUIRE_FALSE(enum_cast<Directions>(0).has_value());
+    REQUIRE(enum_cast<Directions>(0) == Directions::NoDirection);
 
     constexpr auto nto = enum_flags_cast<number>(2 | 8);
     REQUIRE(enum_cast<number>(1 << 1).value() == number::one);
@@ -214,7 +549,7 @@ TEST_CASE("enum_cast") {
     REQUIRE(enum_cast<number>(1 << 3).value() == number::three);
     REQUIRE(enum_cast<number>(1 << 4).value() == number::four);
     REQUIRE(nto.value() == (number::three | number::one));
-    REQUIRE_FALSE(enum_cast<number>(0).has_value());
+    REQUIRE(enum_cast<number>(0) == number::no_number);
   }
 }
 
@@ -223,6 +558,7 @@ TEST_CASE("enum_index") {
   constexpr auto cr = enum_index(Color::RED);
   Color cg = Color::GREEN;
   REQUIRE(cr.value() == 0);
+  REQUIRE(enum_index<as_flags<>>(Color::GREEN).value() == 1);
   REQUIRE(enum_index<Color&>(cg).value() == 1);
   REQUIRE(enum_index(cm[2]).value() == 2);
   REQUIRE_FALSE(enum_index<Color>(Color::RED | Color::GREEN).has_value());
@@ -231,35 +567,36 @@ TEST_CASE("enum_index") {
   REQUIRE_FALSE(enum_index(static_cast<Color>(0)).has_value());
 
   constexpr auto no = enum_index(Numbers::one);
-  REQUIRE(no.value() == 0);
-  REQUIRE(enum_index(Numbers::two).value() == 1);
-  REQUIRE(enum_index(Numbers::three).value() == 2);
-  REQUIRE(enum_index(Numbers::many).value() == 3);
-  REQUIRE_FALSE(enum_index(static_cast<Numbers>(0)).has_value());
+  REQUIRE(no.value() == 1);
+  REQUIRE(enum_index(Numbers::two).value() == 2);
+  REQUIRE(enum_index(Numbers::three).value() == 3);
+  REQUIRE(enum_index(Numbers::many).value() == 4);
+  REQUIRE(enum_index(Numbers::none).value() == 0);
 
   constexpr auto dr = enum_index(Directions::Right);
   Directions dl = Directions::Left;
-  REQUIRE(enum_index<Directions&>(dl).value() == 0);
-  REQUIRE(enum_index<const Directions>(Directions::Down).value() == 1);
-  REQUIRE(enum_index(Directions::Up).value() == 2);
-  REQUIRE(dr.value() == 3);
-  REQUIRE_FALSE(enum_index(static_cast<Directions>(0)).has_value());
+  REQUIRE(enum_index<Directions&>(dl).value() == 1);
+  REQUIRE(enum_index<const Directions>(Directions::Down).value() == 2);
+  REQUIRE(enum_index(Directions::Up).value() == 3);
+  REQUIRE(dr.value() == 4);
+  REQUIRE(enum_index(Directions::NoDirection).value() == 0);
 
   constexpr auto nto = enum_index(number::three | number::one);
-  REQUIRE(enum_index(number::one).value() == 0);
-  REQUIRE(enum_index(number::two).value() == 1);
-  REQUIRE(enum_index(number::three).value() == 2);
-  REQUIRE(enum_index(number::four).value() == 3);
+  REQUIRE(enum_index(number::one).value() == 1);
+  REQUIRE(enum_index(number::two).value() == 2);
+  REQUIRE(enum_index(number::three).value() == 3);
+  REQUIRE(enum_index(number::four).value() == 4);
   REQUIRE_FALSE(nto.has_value());
-  REQUIRE_FALSE(enum_index(static_cast<number>(0)).has_value());
+  REQUIRE(enum_index(number::no_number).value() == 0);
 }
 
 TEST_CASE("enum_contains") {
-  SECTION("value") {
+  SUBCASE("value") {
     Color cm[3] = {Color::RED, Color::GREEN, Color::BLUE};
     constexpr auto cr = enum_contains(Color::RED);
     Color cg = Color::GREEN;
     REQUIRE(cr);
+    REQUIRE(enum_contains<as_flags<>>(Color::GREEN));
     REQUIRE(enum_contains<Color&>(cg));
     REQUIRE(enum_contains(cm[2]));
     REQUIRE_FALSE(enum_contains(static_cast<Color>(0)));
@@ -276,7 +613,7 @@ TEST_CASE("enum_contains") {
     REQUIRE(enum_contains(Numbers::two));
     REQUIRE(enum_contains(Numbers::three));
     REQUIRE(enum_contains(Numbers::many));
-    REQUIRE_FALSE(enum_contains(static_cast<Numbers>(0)));
+    REQUIRE(enum_contains(static_cast<Numbers>(0)));
 
     constexpr auto dr = enum_contains(Directions::Right);
     Directions dl = Directions::Left;
@@ -284,20 +621,22 @@ TEST_CASE("enum_contains") {
     REQUIRE(enum_contains<const Directions>(Directions::Down));
     REQUIRE(enum_contains(Directions::Up));
     REQUIRE(dr);
-    REQUIRE_FALSE(enum_contains(static_cast<Directions>(0)));
+    REQUIRE(enum_contains(static_cast<Directions>(0)));
 
     constexpr auto nto = enum_contains(number::three | number::one);
     REQUIRE(enum_contains(number::one));
-    REQUIRE(enum_contains<number&>(number::two));
+    // A reference E binds the enum value overload, so the argument must be an lvalue.
+    number nv = number::two;
+    REQUIRE(enum_contains<number&>(nv));
     REQUIRE(enum_contains(number::one));
     REQUIRE(enum_contains(number::four));
     REQUIRE_FALSE(nto);
-    REQUIRE_FALSE(enum_contains(static_cast<number>(0)));
+    REQUIRE(enum_contains(static_cast<number>(0)));
 
     REQUIRE(enum_flags_contains(number::three | number::one));
   }
 
-  SECTION("integer") {
+  SUBCASE("integer") {
     REQUIRE(enum_contains<Color>(1));
     REQUIRE(enum_contains<Color&>(2));
     REQUIRE(enum_contains<const Color>(4));
@@ -322,7 +661,7 @@ TEST_CASE("enum_contains") {
     REQUIRE(enum_contains<const Directions>(std::uint64_t{1} << 10));
     REQUIRE(enum_contains<Directions>(std::uint64_t{1} << 20));
     REQUIRE(enum_contains<Directions>(std::uint64_t{1} << 31));
-    REQUIRE_FALSE(enum_contains<Directions>(static_cast<Directions>(0)));
+    REQUIRE(enum_contains<Directions>(static_cast<Directions>(0)));
 
     constexpr auto nto = enum_contains<number>(8 | 2);
     REQUIRE(enum_contains<number>(1 << 1));
@@ -333,10 +672,10 @@ TEST_CASE("enum_contains") {
     REQUIRE_FALSE(enum_contains<number>(8 | 16 | 16));
     REQUIRE_FALSE(nto);
     REQUIRE_FALSE(enum_contains<number>(8 | 64));
-    REQUIRE_FALSE(enum_contains<number>(0));
+    REQUIRE(enum_contains<number>(0));
   }
 
-  SECTION("string") {
+  SUBCASE("string") {
     constexpr auto cr = "RED";
     REQUIRE(enum_contains<Color>(cr));
     REQUIRE(enum_contains<Color&>("GREEN"));
@@ -348,14 +687,16 @@ TEST_CASE("enum_contains") {
     REQUIRE_FALSE(enum_contains<Color>("None"));
 
     REQUIRE(enum_flags_contains<Color&>("GREEN"));
+    REQUIRE(enum_flags_contains<Color>("GREEN", '|', LvalueOnlyPredicate{}));
     REQUIRE(enum_flags_contains<Color>("blue", '|', [](char lhs, char rhs) { return std::tolower(lhs) == std::tolower(rhs); }));
     REQUIRE(enum_flags_contains<Color>("blue|RED", '|', [](char lhs, char rhs) { return std::tolower(lhs) == std::tolower(rhs); }));
     REQUIRE(enum_flags_contains<Color>("GREEN|RED"));
+    static_assert(enum_flags_contains<Color>("GREEN|RED|RED"));
     REQUIRE(enum_flags_contains<Color>("GREEN|RED|RED"));
     REQUIRE_FALSE(enum_flags_contains<Color>("GREEN|RED|None"));
     REQUIRE_FALSE(enum_flags_contains<Color>("None"));
 
-    // Test custom separator
+    // Custom separator.
     REQUIRE(enum_flags_contains<Color>("GREEN,RED", ','));
     REQUIRE(enum_flags_contains<Color>("green,red", ',', [](char lhs, char rhs) { return std::tolower(lhs) == std::tolower(rhs); }));
     REQUIRE_FALSE(enum_flags_contains<Color>("GREEN,RED,None", ','));
@@ -396,38 +737,41 @@ TEST_CASE("enum_value") {
   REQUIRE(enum_value<Color, 1>() == Color::GREEN);
   REQUIRE(enum_value<Color, 2>() == Color::BLUE);
 
-  constexpr auto no = enum_value<Numbers>(0);
+  REQUIRE(enum_value<Numbers>(0) == Numbers::none);
+  constexpr auto no = enum_value<Numbers>(1);
   REQUIRE(no == Numbers::one);
-  REQUIRE(enum_value<Numbers>(1) == Numbers::two);
-  REQUIRE(enum_value<Numbers>(2) == Numbers::three);
-  REQUIRE(enum_value<Numbers>(3) == Numbers::many);
+  REQUIRE(enum_value<Numbers>(2) == Numbers::two);
+  REQUIRE(enum_value<Numbers>(3) == Numbers::three);
+  REQUIRE(enum_value<Numbers>(4) == Numbers::many);
 
-  REQUIRE(enum_value<Numbers, 0>() == Numbers::one);
-  REQUIRE(enum_value<Numbers, 1>() == Numbers::two);
-  REQUIRE(enum_value<Numbers, 2>() == Numbers::three);
-  REQUIRE(enum_value<Numbers, 3>() == Numbers::many);
+  REQUIRE(enum_value<Numbers, 1>() == Numbers::one);
+  REQUIRE(enum_value<Numbers, 2>() == Numbers::two);
+  REQUIRE(enum_value<Numbers, 3>() == Numbers::three);
+  REQUIRE(enum_value<Numbers, 4>() == Numbers::many);
 
-  constexpr auto dr = enum_value<Directions>(3);
-  REQUIRE(enum_value<Directions&>(0) == Directions::Left);
-  REQUIRE(enum_value<const Directions>(1) == Directions::Down);
-  REQUIRE(enum_value<Directions>(2) == Directions::Up);
+  REQUIRE(enum_value<Directions>(0) == Directions::NoDirection);
+  constexpr auto dr = enum_value<Directions>(4);
+  REQUIRE(enum_value<Directions&>(1) == Directions::Left);
+  REQUIRE(enum_value<const Directions>(2) == Directions::Down);
+  REQUIRE(enum_value<Directions>(3) == Directions::Up);
   REQUIRE(dr == Directions::Right);
 
-  REQUIRE(enum_value<Directions, 0>() == Directions::Left);
-  REQUIRE(enum_value<Directions, 1>() == Directions::Down);
-  REQUIRE(enum_value<Directions, 2>() == Directions::Up);
-  REQUIRE(enum_value<Directions, 3>() == Directions::Right);
+  REQUIRE(enum_value<Directions, 1>() == Directions::Left);
+  REQUIRE(enum_value<Directions, 2>() == Directions::Down);
+  REQUIRE(enum_value<Directions, 3>() == Directions::Up);
+  REQUIRE(enum_value<Directions, 4>() == Directions::Right);
 
-  constexpr auto nt = enum_value<number>(2);
-  REQUIRE(enum_value<number>(0) == number::one);
-  REQUIRE(enum_value<number>(1) == number::two);
+  REQUIRE(enum_value<number>(0) == number::no_number);
+  constexpr auto nt = enum_value<number>(3);
+  REQUIRE(enum_value<number>(1) == number::one);
+  REQUIRE(enum_value<number>(2) == number::two);
   REQUIRE(nt == number::three);
-  REQUIRE(enum_value<number>(3) == number::four);
+  REQUIRE(enum_value<number>(4) == number::four);
 
-  REQUIRE(enum_value<number, 0>() == number::one);
-  REQUIRE(enum_value<number, 1>() == number::two);
-  REQUIRE(enum_value<number, 2>() == number::three);
-  REQUIRE(enum_value<number, 3>() == number::four);
+  REQUIRE(enum_value<number, 1>() == number::one);
+  REQUIRE(enum_value<number, 2>() == number::two);
+  REQUIRE(enum_value<number, 3>() == number::three);
+  REQUIRE(enum_value<number, 4>() == number::four);
 }
 
 TEST_CASE("enum_values") {
@@ -437,13 +781,13 @@ TEST_CASE("enum_values") {
   REQUIRE(s1 == std::array<Color, 3>{{Color::RED, Color::GREEN, Color::BLUE}});
 
   constexpr auto& s2 = enum_values<Numbers>();
-  REQUIRE(s2 == std::array<Numbers, 4>{{Numbers::one, Numbers::two, Numbers::three, Numbers::many}});
+  REQUIRE(s2 == std::array<Numbers, 5>{{Numbers::none, Numbers::one, Numbers::two, Numbers::three, Numbers::many}});
 
   constexpr auto& s3 = enum_values<const Directions>();
-  REQUIRE(s3 == std::array<Directions, 4>{{Directions::Left, Directions::Down, Directions::Up, Directions::Right}});
+  REQUIRE(s3 == std::array<Directions, 5>{{Directions::NoDirection, Directions::Left, Directions::Down, Directions::Up, Directions::Right}});
 
   constexpr auto& s4 = enum_values<number>();
-  REQUIRE(s4 == std::array<number, 4>{{number::one, number::two, number::three, number::four}});
+  REQUIRE(s4 == std::array<number, 5>{{number::no_number, number::one, number::two, number::three, number::four}});
 }
 
 TEST_CASE("enum_count") {
@@ -451,22 +795,39 @@ TEST_CASE("enum_count") {
   REQUIRE(s1 == 3);
 
   constexpr auto s2 = enum_count<Numbers>();
-  REQUIRE(s2 == 4);
+  REQUIRE(s2 == 5);
 
   constexpr auto s3 = enum_count<const Directions>();
-  REQUIRE(s3 == 4);
+  REQUIRE(s3 == 5);
 
   constexpr auto s4 = enum_count<number>();
-  REQUIRE(s4 == 4);
+  REQUIRE(s4 == 5);
+}
+
+TEST_CASE("enum_min_max") {
+  constexpr auto color_min = enum_min<Color&>();
+  constexpr auto color_max = enum_max<const Color, as_flags<>>();
+  REQUIRE(color_min == Color::RED);
+  REQUIRE(color_max == Color::BLUE);
+
+  REQUIRE(enum_min<Directions>() == Directions::NoDirection);
+  REQUIRE(enum_max<Directions>() == Directions::Right);
+  REQUIRE(enum_min<number>() == number::no_number);
+  REQUIRE(enum_max<number>() == number::four);
+  REQUIRE(enum_min<number, as_common<>>() == number::no_number);
+  REQUIRE(enum_max<number, as_common<>>() == number::four);
+  REQUIRE(enum_min<BoolFlags>() == BoolFlags::Disabled);
+  REQUIRE(enum_max<BoolFlags>() == BoolFlags::Enabled);
 }
 
 TEST_CASE("enum_name") {
-  SECTION("automatic storage") {
+  SUBCASE("automatic storage") {
     constexpr Color cr = Color::RED;
     constexpr auto cr_name = enum_name(cr);
     Color cm[3] = {Color::RED, Color::GREEN, Color::BLUE};
     Color cb = Color::BLUE;
     REQUIRE(cr_name == "RED");
+    REQUIRE(enum_name<as_flags<>>(Color::GREEN) == "GREEN");
     REQUIRE(enum_name<Color&>(cb) == "BLUE");
     REQUIRE(enum_name(cm[1]) == "GREEN");
     REQUIRE(enum_name(Color::RED | Color{0}) == "RED");
@@ -481,7 +842,7 @@ TEST_CASE("enum_name") {
     REQUIRE(enum_name(Numbers::three) == "three");
     REQUIRE(enum_name(Numbers::many) == "many");
     REQUIRE(enum_name(Numbers::many | Numbers::two).empty());
-    REQUIRE(enum_name(static_cast<Numbers>(0)).empty());
+    REQUIRE(enum_name(static_cast<Numbers>(0)) == "none");
 
     constexpr Directions dr = Directions::Right;
     constexpr auto dr_name = enum_name(dr);
@@ -491,7 +852,7 @@ TEST_CASE("enum_name") {
     REQUIRE(dr_name == "Right");
     REQUIRE(enum_name(Directions::Left) == "Left");
     REQUIRE(enum_name(Directions::Right | Directions::Up | Directions::Left | Directions::Down).empty());
-    REQUIRE(enum_name(static_cast<Directions>(0)).empty());
+    REQUIRE(enum_name(static_cast<Directions>(0)) == "NoDirection");
 
     constexpr number nto = number::three | number::one;
     constexpr auto nto_name = enum_name(nto);
@@ -500,7 +861,7 @@ TEST_CASE("enum_name") {
     REQUIRE(enum_name(number::three) == "three");
     REQUIRE(enum_name(number::four) == "four");
     REQUIRE(nto_name.empty());
-    REQUIRE(enum_name(static_cast<number>(0)).empty());
+    REQUIRE(enum_name(static_cast<number>(0)) == "no_number");
   }
 }
 
@@ -524,7 +885,7 @@ TEST_CASE("enum_flags_name") {
   REQUIRE(enum_flags_name(Numbers::three) == "three");
   REQUIRE(enum_flags_name(Numbers::many) == "many");
   REQUIRE(enum_flags_name(Numbers::many | Numbers::two) == "two|many");
-  REQUIRE(enum_flags_name(static_cast<Numbers>(0)).empty());
+  REQUIRE(enum_flags_name(static_cast<Numbers>(0)) == "none");
 
   constexpr Directions dr = Directions::Right;
   auto dr_name = enum_flags_name(dr);
@@ -534,7 +895,7 @@ TEST_CASE("enum_flags_name") {
   REQUIRE(dr_name == "Right");
   REQUIRE(enum_flags_name(Directions::Left) == "Left");
   REQUIRE(enum_flags_name(Directions::Right | Directions::Up | Directions::Left | Directions::Down) == "Left|Down|Up|Right");
-  REQUIRE(enum_flags_name(static_cast<Directions>(0)).empty());
+  REQUIRE(enum_flags_name(static_cast<Directions>(0)) == "NoDirection");
 
   constexpr number nto = number::three | number::one;
   auto nto_name = enum_flags_name(nto);
@@ -543,11 +904,11 @@ TEST_CASE("enum_flags_name") {
   REQUIRE(enum_flags_name(number::three) == "three");
   REQUIRE(enum_flags_name(number::four) == "four");
   REQUIRE(nto_name == "one|three");
-  REQUIRE(enum_flags_name(static_cast<number>(0)).empty());
+  REQUIRE(enum_flags_name(static_cast<number>(0)) == "no_number");
 
   REQUIRE(enum_flags_name(CStyleFlags_A | CStyleFlags_B | CStyleFlags_C | CStyleFlags_D) == "A|B|C|D");
 
-  // Test custom separator
+  // Custom separator.
   REQUIRE(enum_flags_name(Color::RED | Color::GREEN, ',') == "RED,GREEN");
   REQUIRE(enum_flags_name(Color::RED | Color::GREEN | Color::BLUE, ',') == "RED,GREEN,BLUE");
   REQUIRE(enum_flags_name(Numbers::many | Numbers::two, ',') == "two,many");
@@ -562,13 +923,13 @@ TEST_CASE("enum_names") {
   REQUIRE(s1 == std::array<std::string_view, 3>{{"RED", "GREEN", "BLUE"}});
 
   constexpr auto& s2 = enum_names<Numbers>();
-  REQUIRE(s2 == std::array<std::string_view, 4>{{"one", "two", "three", "many"}});
+  REQUIRE(s2 == std::array<std::string_view, 5>{{"none", "one", "two", "three", "many"}});
 
   constexpr auto& s3 = enum_names<const Directions>();
-  REQUIRE(s3 == std::array<std::string_view, 4>{{"Left", "Down", "Up", "Right"}});
+  REQUIRE(s3 == std::array<std::string_view, 5>{{"NoDirection", "Left", "Down", "Up", "Right"}});
 
   constexpr auto& s4 = enum_names<number>();
-  REQUIRE(s4 == std::array<std::string_view, 4>{{"one", "two", "three", "four"}});
+  REQUIRE(s4 == std::array<std::string_view, 5>{{"no_number", "one", "two", "three", "four"}});
 }
 
 TEST_CASE("enum_entries") {
@@ -578,204 +939,85 @@ TEST_CASE("enum_entries") {
   REQUIRE(s1 == std::array<std::pair<Color, std::string_view>, 3>{{{Color::RED, "RED"}, {Color::GREEN, "GREEN"}, {Color::BLUE, "BLUE"}}});
 
   constexpr auto& s2 = enum_entries<Numbers>();
-  REQUIRE(s2 == std::array<std::pair<Numbers, std::string_view>, 4>{{{Numbers::one, "one"}, {Numbers::two, "two"}, {Numbers::three, "three"}, {Numbers::many, "many"}}});
+  REQUIRE(s2 == std::array<std::pair<Numbers, std::string_view>, 5>{{{Numbers::none, "none"}, {Numbers::one, "one"}, {Numbers::two, "two"}, {Numbers::three, "three"}, {Numbers::many, "many"}}});
 
   constexpr auto& s3 = enum_entries<Directions&>();
-  REQUIRE(s3 == std::array<std::pair<Directions, std::string_view>, 4>{{{Directions::Left, "Left"}, {Directions::Down, "Down"}, {Directions::Up, "Up"}, {Directions::Right, "Right"}}});
+  REQUIRE(s3 == std::array<std::pair<Directions, std::string_view>, 5>{{{Directions::NoDirection, "NoDirection"}, {Directions::Left, "Left"}, {Directions::Down, "Down"}, {Directions::Up, "Up"}, {Directions::Right, "Right"}}});
 
   constexpr auto& s4 = enum_entries<number>();
-  REQUIRE(s4 == std::array<std::pair<number, std::string_view>, 4>{{{number::one, "one"}, {number::two, "two"}, {number::three, "three"}, {number::four, "four"}}});
+  REQUIRE(s4 == std::array<std::pair<number, std::string_view>, 5>{{{number::no_number, "no_number"}, {number::one, "one"}, {number::two, "two"}, {number::three, "three"}, {number::four, "four"}}});
 }
 
-TEST_CASE("ostream_operators") {
-  auto test_ostream = [](auto e, std::string name) {
-    using namespace magic_enum::ostream_operators;
-    std::stringstream ss;
-    ss << e;
-    REQUIRE(ss.str() == name);
-  };
+TEST_CASE("flags string lifetime and null termination") {
+  std::string_view value_name{};
+  value_name = enum_name(Color::RED);
+  require_null_terminated(value_name, "RED");
 
-  test_ostream(std::make_optional(Color::RED), "RED");
-  test_ostream(Color::GREEN, "GREEN");
-  test_ostream(Color::BLUE, "BLUE");
-  test_ostream(Color::BLUE | Color::RED, "RED|BLUE");
-  test_ostream(Color::BLUE | Color::RED | Color::RED, "RED|BLUE");
-  test_ostream(static_cast<Color>(0), "0");
-  test_ostream(std::make_optional(static_cast<Color>(0)), "0");
+  std::string_view static_name{};
+  static_name = enum_name<Color::BLUE>();
+  require_null_terminated(static_name, "BLUE");
 
-  test_ostream(std::make_optional(Numbers::one), "one");
-  test_ostream(Numbers::two, "two");
-  test_ostream(Numbers::three, "three");
-  test_ostream(Numbers::many, "many");
-  test_ostream(static_cast<Numbers>(0), "0");
-  test_ostream(std::make_optional(static_cast<Numbers>(0)), "0");
+  std::string_view invalid_name{};
+  invalid_name = enum_name(Color::RED | Color::GREEN);
+  require_null_terminated(invalid_name, "");
 
-  test_ostream(std::make_optional(Directions::Up), "Up");
-  test_ostream(Directions::Down, "Down");
-  test_ostream(Directions::Right, "Right");
-  test_ostream(Directions::Left, "Left");
-  test_ostream(Directions::Right | Directions::Left, "Left|Right");
-  test_ostream(static_cast<Directions>(0), "0");
-  test_ostream(std::make_optional(static_cast<Directions>(0)), "0");
+  std::string_view array_name{};
+  array_name = enum_names<Color>()[1];
+  require_null_terminated(array_name, "GREEN");
 
-  test_ostream(std::make_optional(number::one), "one");
-  test_ostream(number::two, "two");
-  test_ostream(number::three, "three");
-  test_ostream(number::four, "four");
-  test_ostream(number::four | number::one, "one|four");
-  test_ostream(static_cast<number>(0), "0");
-  test_ostream(std::make_optional(static_cast<number>(0)), "0");
-}
+  std::string_view entry_name{};
+  entry_name = enum_entries<Directions>()[4].second;
+  require_null_terminated(entry_name, "Right");
 
-TEST_CASE("istream_operators") {
-  auto test_istream = [](const auto e, std::string name) {
-    using namespace magic_enum::istream_operators;
-    std::istringstream ss(name);
-    std::decay_t<decltype(e)> v;
-    ss >> v;
-    REQUIRE(v == e);
-    REQUIRE(ss);
-  };
+  std::string_view prefixed_name{};
+  prefixed_name = enum_name(CStyleFlags_A);
+  require_null_terminated(prefixed_name, "A");
 
-  test_istream(Color::GREEN, "GREEN");
-  test_istream(Color::BLUE, "BLUE");
-  test_istream(Color::BLUE | Color::RED, "RED|BLUE");
-  test_istream(Color::BLUE | Color::RED | Color::RED, "RED|BLUE");
+  std::string_view prefixed_entry_name{};
+  prefixed_entry_name = enum_entries<CStyleFlags>()[0].second;
+  require_null_terminated(prefixed_entry_name, "A");
 
-  test_istream(Numbers::two, "two");
-  test_istream(Numbers::three, "three");
-  test_istream(Numbers::many, "many");
+  auto flags_name = enum_flags_name(Color::RED | Color::GREEN);
+  require_c_str_null_terminated(flags_name, "RED|GREEN");
 
-  test_istream(Directions::Down, "Down");
-  test_istream(Directions::Right, "Right");
-  test_istream(Directions::Left, "Left");
-  test_istream(Directions::Right | Directions::Left, "Left|Right");
+  auto empty_flags_name = enum_flags_name(static_cast<Color>(0));
+  require_c_str_null_terminated(empty_flags_name, "");
 
-  test_istream(number::two, "two");
-  test_istream(number::three, "three");
-  test_istream(number::four, "four");
-  test_istream(number::four | number::one, "one|four");
-}
+  auto prefixed_flags_name = enum_flags_name(CStyleFlags_A | CStyleFlags_C);
+  require_c_str_null_terminated(prefixed_flags_name, "A|C");
 
-TEST_CASE("bitwise_operators") {
-  SECTION("operator^") {
-    REQUIRE(enum_integer(~Color::RED) == ~enum_integer(Color::RED));
-    REQUIRE(enum_integer(~Numbers::one) == ~enum_integer(Numbers::one));
-    REQUIRE(enum_integer(~Directions::Up) == ~enum_integer(Directions::Up));
-    REQUIRE(enum_integer(~number::one) == ~enum_integer(number::one));
+  for (std::string_view name : enum_names<Color>()) {
+    require_null_terminated(name);
   }
-
-  SECTION("operator|") {
-    REQUIRE(enum_integer(Color::RED | Color::BLUE) == (enum_integer(Color::RED) | enum_integer(Color::BLUE)));
-    REQUIRE(enum_integer(Numbers::one | Numbers::two) == (enum_integer(Numbers::one) | enum_integer(Numbers::two)));
-    REQUIRE(enum_integer(Directions::Up | Directions::Down) == (enum_integer(Directions::Up) | enum_integer(Directions::Down)));
-    REQUIRE(enum_integer(number::one | number::two) == (enum_integer(number::one) | enum_integer(number::two)));
+  for (std::string_view name : enum_names<Numbers>()) {
+    require_null_terminated(name);
   }
-
-  SECTION("operator&") {
-    REQUIRE(enum_integer(Color::RED & Color::BLUE) == (enum_integer(Color::RED) & enum_integer(Color::BLUE)));
-    REQUIRE(enum_integer(Numbers::one & Numbers::two) == (enum_integer(Numbers::one) & enum_integer(Numbers::two)));
-    REQUIRE(enum_integer(Directions::Up & Directions::Down) == (enum_integer(Directions::Up) & enum_integer(Directions::Down)));
-    REQUIRE(enum_integer(number::one & number::two) == (enum_integer(number::one) & enum_integer(number::two)));
+  for (const auto& entry : enum_entries<Color>()) {
+    require_null_terminated(entry.second);
   }
-
-  SECTION("operator^") {
-    REQUIRE(enum_integer(Color::RED ^ Color::BLUE) == (enum_integer(Color::RED) ^ enum_integer(Color::BLUE)));
-    REQUIRE(enum_integer(Numbers::one ^ Numbers::two) == (enum_integer(Numbers::one) ^ enum_integer(Numbers::two)));
-    REQUIRE(enum_integer(Directions::Up ^ Directions::Down) == (enum_integer(Directions::Up) ^ enum_integer(Directions::Down)));
-    REQUIRE(enum_integer(number::one ^ number::two) == (enum_integer(number::one) ^ enum_integer(number::two)));
+  for (const auto& entry : enum_entries<Directions>()) {
+    require_null_terminated(entry.second);
   }
-
-  SECTION("operator|=") {
-    Color x1 = Color::RED;
-    x1 |= Color::BLUE;
-    REQUIRE(enum_integer(x1) == (enum_integer(Color::RED) | enum_integer(Color::BLUE)));
-
-    Numbers x2 = Numbers::one;
-    x2 |= Numbers::two;
-    REQUIRE(enum_integer(x2) == (enum_integer(Numbers::one) | enum_integer(Numbers::two)));
-
-    Directions x3 = Directions::Up;
-    x3 |= Directions::Down;
-    REQUIRE(enum_integer(x3) == (enum_integer(Directions::Up) | enum_integer(Directions::Down)));
-
-    number x4 = number::one;
-    x4 |= number::two;
-    REQUIRE(enum_integer(x4) == (enum_integer(number::one) | enum_integer(number::two)));
+  for (std::string_view name : enum_names<CStyleFlags>()) {
+    require_null_terminated(name);
   }
-
-  SECTION("operator&=") {
-    Color x1 = Color::RED;
-    x1 &= Color::BLUE;
-    REQUIRE(enum_integer(x1) == (enum_integer(Color::RED) & enum_integer(Color::BLUE)));
-
-    Numbers x2 = Numbers::one;
-    x2 &= Numbers::two;
-    REQUIRE(enum_integer(x2) == (enum_integer(Numbers::one) & enum_integer(Numbers::two)));
-
-    Directions x3 = Directions::Up;
-    x3 &= Directions::Down;
-    REQUIRE(enum_integer(x3) == (enum_integer(Directions::Up) & enum_integer(Directions::Down)));
-
-    number x4 = number::one;
-    x4 &= number::two;
-    REQUIRE(enum_integer(x4) == (enum_integer(number::one) & enum_integer(number::two)));
-  }
-
-  SECTION("operator^=") {
-    Color x1 = Color::RED;
-    x1 ^= Color::BLUE;
-    REQUIRE(enum_integer(x1) == (enum_integer(Color::RED) ^ enum_integer(Color::BLUE)));
-
-    Numbers x2 = Numbers::one;
-    x2 ^= Numbers::two;
-    REQUIRE(enum_integer(x2) == (enum_integer(Numbers::one) ^ enum_integer(Numbers::two)));
-
-    Directions x3 = Directions::Up;
-    x3 ^= Directions::Down;
-    REQUIRE(enum_integer(x3) == (enum_integer(Directions::Up) ^ enum_integer(Directions::Down)));
-
-    number x4 = number::one;
-    x4 ^= number::two;
-    REQUIRE(enum_integer(x4) == (enum_integer(number::one) ^ enum_integer(number::two)));
+  for (const auto& entry : enum_entries<CStyleFlags>()) {
+    require_null_terminated(entry.second);
   }
 }
 
-#if defined(__clang__) && __clang_major__ >= 5 || defined(__GNUC__) && __GNUC__ >= 9 || defined(_MSC_VER) && _MSC_VER >= 1920
-#  define MAGIC_ENUM_SUPPORTED_CONSTEXPR_FOR 1
-#endif
-
-#if defined(MAGIC_ENUM_SUPPORTED_CONSTEXPR_FOR)
-
-// from https://artificial-mind.net/blog/2020/10/31/constexpr-for
-template <auto Start, auto End, auto Inc, class F>
-constexpr void constexpr_for(F&& f) {
-  if constexpr (Start < End) {
-    f(std::integral_constant<decltype(Start), Start>());
-    constexpr_for<Start + Inc, End, Inc>(f);
-  }
+TEST_CASE("type_traits") {
+  static_assert(!detail::is_reflected_v<int, detail::enum_subtype::common>);
+  static_assert(detail::subtype_v<Color> == detail::enum_subtype::flags);
+  static_assert(detail::subtype_v<const Color&> == detail::enum_subtype::flags);
+  static_assert(detail::subtype_v<Numbers> == detail::enum_subtype::flags);
+  REQUIRE(is_flags_enum<Color>::value);
+  REQUIRE(is_flags_enum_v<const Color>);
+  REQUIRE_FALSE(is_flags_enum_v<Color&>);
+  REQUIRE(is_flags_enum_v<Numbers>);
+  REQUIRE(is_flags_enum_v<Directions>);
+  REQUIRE(is_flags_enum_v<number>);
 }
-
-template <typename E, E V>
-struct Foo {};
-
-TEST_CASE("constexpr_for") {
-  constexpr_for<0, magic_enum::enum_count<Color>(), 1>([](auto i) {
-    [[maybe_unused]] Foo<Color, magic_enum::enum_value<Color, i>()> bar{};
-  });
-}
-
-#endif
-
-#if defined(__cpp_lib_format)
-
-#include <magic_enum/magic_enum_format.hpp>
-
-TEST_CASE("format-base") {
-  REQUIRE(std::format("Test-{:~^11}.", Color::RED | Color::GREEN) == "Test-~RED|GREEN~.");
-}
-
-#endif
 
 TEST_CASE("enum_flags_test") {
   REQUIRE(enum_flags_test(Color::RED|Color::GREEN, Color::RED));
@@ -818,66 +1060,4 @@ TEST_CASE("enum_flags_test_any") {
   REQUIRE(enum_flags_test(Numbers::none, Numbers::none) == enum_flags_test_any(Numbers::none, Numbers::none));
   REQUIRE(enum_flags_test(Numbers::one, Numbers::none) == enum_flags_test_any(Numbers::one, Numbers::none));
   REQUIRE(enum_flags_test(Numbers::none, Numbers::one) == enum_flags_test_any(Numbers::none, Numbers::one));
-}
-
-TEST_CASE("enum_next_value") {
-  REQUIRE(enum_next_value(Color::RED) == Color::GREEN);
-  REQUIRE(enum_next_value(Color::RED, 2) == Color::BLUE);
-  REQUIRE(enum_next_value(Color::RED, 1) == Color::GREEN);
-  REQUIRE(enum_next_value(Color::RED, 0) == Color::RED);
-  REQUIRE(enum_next_value(Color::BLUE, -2) == Color::RED);
-  REQUIRE(enum_next_value(Color::BLUE, -1) == Color::GREEN);
-  REQUIRE_FALSE(enum_next_value(Color::BLUE).has_value());
-  REQUIRE_FALSE(enum_next_value(Color::RED, -1).has_value());
-  REQUIRE_FALSE(enum_next_value(Color::RED, 10).has_value());
-}
-
-TEST_CASE("enum_next_value_circular") {
-  REQUIRE(enum_next_value_circular(Color::RED) == Color::GREEN);
-  REQUIRE(enum_next_value_circular(Color::RED, 2) == Color::BLUE);
-  REQUIRE(enum_next_value_circular(Color::RED, 1) == Color::GREEN);
-  REQUIRE(enum_next_value_circular(Color::RED, 0) == Color::RED);
-  REQUIRE(enum_next_value_circular(Color::BLUE, -2) == Color::RED);
-  REQUIRE(enum_next_value_circular(Color::BLUE, -1) == Color::GREEN);
-  REQUIRE(enum_next_value_circular(Color::BLUE) == Color::RED);
-  REQUIRE(enum_next_value_circular(Color::BLUE, 4) == Color::RED);
-  REQUIRE(enum_next_value_circular(Color::BLUE, 3) == Color::BLUE);
-  REQUIRE(enum_next_value_circular(Color::BLUE, 2) == Color::GREEN);
-  REQUIRE(enum_next_value_circular(Color::BLUE, 1) == Color::RED);
-  REQUIRE(enum_next_value_circular(Color::BLUE, 0) == Color::BLUE);
-  REQUIRE(enum_next_value_circular(Color::RED, -1) == Color::BLUE);
-  REQUIRE(enum_next_value_circular(Color::RED, -2) == Color::GREEN);
-  REQUIRE(enum_next_value_circular(Color::RED, -3) == Color::RED);
-  REQUIRE(enum_next_value_circular(Color::RED, -4) == Color::BLUE);
-}
-
-TEST_CASE("enum_prev_value") {
-  REQUIRE(enum_prev_value(Color::BLUE) == Color::GREEN);
-  REQUIRE(enum_prev_value(Color::BLUE, 2) == Color::RED);
-  REQUIRE(enum_prev_value(Color::BLUE, 1) == Color::GREEN);
-  REQUIRE(enum_prev_value(Color::RED, -2) == Color::BLUE);
-  REQUIRE(enum_prev_value(Color::RED, -1) == Color::GREEN);
-  REQUIRE(enum_prev_value(Color::BLUE, 0) == Color::BLUE);
-  REQUIRE_FALSE(enum_prev_value(Color::RED).has_value());
-  REQUIRE_FALSE(enum_prev_value(Color::BLUE, -1).has_value());
-  REQUIRE_FALSE(enum_prev_value(Color::BLUE, 10).has_value());
-}
-
-TEST_CASE("enum_prev_value_circular") {
-  REQUIRE(enum_prev_value_circular(Color::RED) == Color::BLUE);
-  REQUIRE(enum_prev_value_circular(Color::RED, 2) == Color::GREEN);
-  REQUIRE(enum_prev_value_circular(Color::RED, 1) == Color::BLUE);
-  REQUIRE(enum_prev_value_circular(Color::RED, 0) == Color::RED);
-  REQUIRE(enum_prev_value_circular(Color::BLUE, -2) == Color::GREEN);
-  REQUIRE(enum_prev_value_circular(Color::BLUE, -1) == Color::RED);
-  REQUIRE(enum_prev_value_circular(Color::BLUE) == Color::GREEN);
-  REQUIRE(enum_prev_value_circular(Color::BLUE, 4) == Color::GREEN);
-  REQUIRE(enum_prev_value_circular(Color::BLUE, 3) == Color::BLUE);
-  REQUIRE(enum_prev_value_circular(Color::BLUE, 2) == Color::RED);
-  REQUIRE(enum_prev_value_circular(Color::BLUE, 1) == Color::GREEN);
-  REQUIRE(enum_prev_value_circular(Color::BLUE, 0) == Color::BLUE);
-  REQUIRE(enum_prev_value_circular(Color::RED, -1) == Color::GREEN);
-  REQUIRE(enum_prev_value_circular(Color::RED, -2) == Color::BLUE);
-  REQUIRE(enum_prev_value_circular(Color::RED, -3) == Color::RED);
-  REQUIRE(enum_prev_value_circular(Color::RED, -4) == Color::GREEN);
 }
