@@ -1,7 +1,6 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2020 - 2024 Daniil Goncharov <neargye@gmail.com>.
-// Copyright (c) 2020 - 2023 Uruha Komachin <uruhakomachin@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -21,25 +20,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include <iostream>
+#ifdef MAGIC_ENUM_TEST_IMPORT_STD
+import std;
+#else
+#  include <iostream>
+#endif
 
-#include <magic_enum/magic_enum.hpp>
+import magic_enum;
 
-enum class Language : int {
-    日本語 = 10,
-    한국어 = 20,
-    English = 30,
-    😃 = 40,
-};
+enum class Color : int { RED = -10, BLUE = 0, GREEN = 10 };
 
 int main() {
-  std::cout << magic_enum::enum_name(Language::日本語) << std::endl; // Japanese
-  std::cout << magic_enum::enum_name(Language::한국어) << std::endl; // Korean
-  std::cout << magic_enum::enum_name(Language::English) << std::endl; // English
-  std::cout << magic_enum::enum_name(Language::😃) << std::endl; // Emoji
+    for (const auto c : magic_enum::enum_values<Color>()) {
+        std::cout << magic_enum::enum_name(c) << '\n';
+    }
 
-  std::cout << std::boolalpha;
-  std::cout << (magic_enum::enum_cast<Language>("日本語").value() == Language::日本語) << std::endl; // true
+    constexpr auto result = magic_enum::enum_integer(Color::RED) + magic_enum::enum_integer(Color::GREEN);
+    if (result == magic_enum::enum_integer(Color::BLUE)) {
+        std::cout << "RED + GREEN == BLUE\n";
+    }
 
-  return 0;
+    using magic_enum::iostream_operators::operator<<;
+    constexpr auto c = Color::GREEN;
+    std::cout << "Color: " << Color::RED << " " << c << '\n';
+
+    return 0;
 }

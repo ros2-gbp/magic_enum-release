@@ -5,11 +5,11 @@
 // | |  | | (_| | (_| | | (__  | |____| | | | |_| | | | | | | | |____|_|   |_|
 // |_|  |_|\__,_|\__, |_|\___| |______|_| |_|\__,_|_| |_| |_|  \_____|
 //                __/ | https://github.com/Neargye/magic_enum
-//               |___/  version 0.9.8
+//               |___/  version 0.10.0
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -33,16 +33,37 @@
 #define NEARGYE_MAGIC_ENUM_FORMAT_HPP
 
 #include "magic_enum.hpp"
+#if MAGIC_ENUM_VERSION_MAJOR != 0 || MAGIC_ENUM_VERSION_MINOR != 10 || MAGIC_ENUM_VERSION_PATCH != 0
+#  error "magic_enum headers of different versions are mixed. Check the include paths."
+#endif
 #include "magic_enum_flags.hpp"
+
+#ifndef MAGIC_ENUM_USE_STD_MODULE
+#  include <string>
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma warning(push)
+#  pragma warning(disable : 4459 6244) // Local names can match global names in user code.
+#endif
+
+#if !defined(MAGIC_ENUM_NO_STD_FORMAT) || !defined(MAGIC_ENUM_NO_FMT_FORMAT)
 
 namespace magic_enum::detail {
 
+// fmt formats std::byte itself (in fmt/std.h since fmt 12), and std::format does not format it.
+// Detecting fmt's formatter would depend on include order, so std::byte is always skipped.
+template <typename E>
+inline constexpr bool enable_format_v = std::is_enum_v<std::decay_t<E>> && !std::is_same_v<std::decay_t<E>, std::byte>;
+
 template <typename E, std::enable_if_t<std::is_enum_v<std::decay_t<E>>, int> = 0>
-std::string format_as(E e) {
+std::string format_enum(E e) {
   using D = std::decay_t<E>;
   static_assert(std::is_same_v<char, magic_enum::string_view::value_type>, "magic_enum::formatter requires string_view::value_type type same as char.");
   if constexpr (magic_enum::detail::supported<D>::value) {
-    if constexpr (magic_enum::detail::subtype_v<D> == magic_enum::detail::enum_subtype::flags) {
+    // Enums without reflected values, such as an empty enum, are formatted as integers.
+    if constexpr (magic_enum::detail::count_v<D, magic_enum::detail::subtype_v<D>> == 0) {
+    } else if constexpr (magic_enum::detail::subtype_v<D> == magic_enum::detail::enum_subtype::flags) {
       if (const auto name = magic_enum::enum_flags_name<D>(e); !name.empty()) {
         return {name.data(), name.size()};
       }
@@ -55,34 +76,70 @@ std::string format_as(E e) {
   return std::to_string(magic_enum::enum_integer<D>(e));
 }
 
-} // namespace magic_enum::format
+} // namespace magic_enum::detail
 
-#if defined(__cpp_lib_format)
-
-#ifndef MAGIC_ENUM_USE_STD_MODULE
-#include <format>
 #endif
 
+#if !defined(MAGIC_ENUM_NO_STD_FORMAT) && !defined(MAGIC_ENUM_USE_STD_MODULE)
+#  if __has_include(<format>) && ((defined(_MSVC_LANG) && _MSVC_LANG >= 202002L) || __cplusplus >= 202002L)
+#    include <format>
+#  endif
+#endif
+
+#if !defined(MAGIC_ENUM_NO_STD_FORMAT) && defined(__cpp_lib_format) && __cpp_lib_format >= 201907L
+
 template <typename E>
-struct std::formatter<E, std::enable_if_t<std::is_enum_v<std::decay_t<E>>, char>> : std::formatter<std::string_view, char> {
-  template <class FormatContext>
+struct std::formatter<E, std::enable_if_t<magic_enum::detail::enable_format_v<E>, char>> : std::formatter<std::string_view, char> {
+  template <typename FormatContext>
   auto format(E e, FormatContext& ctx) const {
-    return std::formatter<std::string_view, char>::format(magic_enum::detail::format_as<E>(e), ctx);
+    return std::formatter<std::string_view, char>::format(magic_enum::detail::format_enum<E>(e), ctx);
   }
 };
 
 #endif
 
-#if defined(FMT_VERSION)
+#if !defined(MAGIC_ENUM_NO_FMT_FORMAT) && defined(FMT_VERSION)
+
+namespace magic_enum::detail {
+
+// Hides format_as names from enclosing namespaces, so only ADL finds an overload.
+// Not deleted because GCC 15 and older reject a deleted candidate here instead of failing substitution.
+void format_as();
+
+// fmt 11 passes a const lvalue to format_as, older versions pass an rvalue.
+#  if FMT_VERSION >= 110000
+template <typename E>
+using format_as_result_t = decltype(format_as(std::declval<const E&>()));
+#  else
+template <typename E>
+using format_as_result_t = decltype(format_as(std::declval<E>()));
+#  endif
+
+// fmt 9 uses format_as for enums only when it returns an integer.
+template <typename E, typename = void>
+inline constexpr bool has_format_as_v = false;
 
 template <typename E>
-struct fmt::formatter<E, std::enable_if_t<std::is_enum_v<std::decay_t<E>>, char>> : fmt::formatter<std::string_view, char> {
-  template <class FormatContext>
+inline constexpr bool has_format_as_v<E, std::void_t<format_as_result_t<E>>> = FMT_VERSION >= 100000 || std::is_integral_v<format_as_result_t<E>>;
+
+// fmt formats enums with an ADL format_as overload itself. fmt 9 rejects them when another formatter also matches.
+template <typename E>
+inline constexpr bool enable_fmt_format_v = enable_format_v<E> && !has_format_as_v<std::decay_t<E>>;
+
+} // namespace magic_enum::detail
+
+template <typename E>
+struct fmt::formatter<E, std::enable_if_t<magic_enum::detail::enable_fmt_format_v<E>, char>> : fmt::formatter<std::string_view, char> {
+  template <typename FormatContext>
   auto format(E e, FormatContext& ctx) const {
-    return fmt::formatter<std::string_view, char>::format(magic_enum::detail::format_as<E>(e), ctx);
+    return fmt::formatter<std::string_view, char>::format(magic_enum::detail::format_enum<E>(e), ctx);
   }
 };
 
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma warning(pop)
 #endif
 
 #endif // NEARGYE_MAGIC_ENUM_FORMAT_HPP

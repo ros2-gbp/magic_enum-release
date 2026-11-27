@@ -1,0 +1,66 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['**.md', 'doc/**']
+  schedule:
+  - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  analyze:
+    name: C++ / GCC 13
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    # Avoid enabling C++26 reflection targets in the CodeQL build.
+    env:
+      CC: gcc-13
+      CXX: g++-13
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      with:
+        languages: c-cpp
+        build-mode: manual
+
+    - name: Configure
+      run: cmake -S . -B build-codeql -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+    # Building consumers instantiates this header-only library's templates.
+    - name: Build
+      run: cmake --build build-codeql
+
+    - name: Analyze
+      uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      with:
+        category: /language:c-cpp
+        output: sarif-results
+        upload: failure-only
+
+    - name: Exclude third-party results
+      uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0 # v1.1
+      with:
+        patterns: '-test/3rdparty/**'
+        input: sarif-results/cpp.sarif
+        output: sarif-results/cpp.sarif
+
+    - name: Upload results
+      uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      with:
+        sarif_file: sarif-results/cpp.sarif
+        category: /language:c-cpp

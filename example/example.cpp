@@ -1,6 +1,6 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -23,13 +23,16 @@
 #include <iostream>
 
 #include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_bitwise.hpp>
 #include <magic_enum/magic_enum_iostream.hpp>
 
 enum class Color : int { RED = -10, BLUE = 0, GREEN = 10 };
+// Stream operators only for Color, found by ADL without a using directive.
+MAGIC_ENUM_DEFINE_IOSTREAM_OPERATORS(Color);
 
 template <typename E>
 auto to_integer(magic_enum::Enum<E> value) {
-  // magic_enum::Enum<E> - C++17 Concept for enum type.
+  // magic_enum::Enum<E> restricts the parameter to enum types in C++17.
   return static_cast<magic_enum::underlying_type_t<E>>(value);
 }
 
@@ -70,12 +73,11 @@ int main() {
   auto c4_integer = magic_enum::enum_integer(Color::RED);
   std::cout << "RED = " << c4_integer << std::endl; // RED = -10
 
-  using magic_enum::iostream_operators::operator<<; // out-of-the-box ostream operator for all enums.
   // Ostream operator for enum.
-  std::cout << "Color: " << c1 << " " << c2 << " " << c3 << std::endl; // Color: RED BLUE GREEN
+  std::cout << "Color: " << c1 << " " << *c2 << " " << *c3 << std::endl; // Color: RED BLUE GREEN
 
   // Number of enum values.
-  std::cout << "Color enum size: " << magic_enum::enum_count<Color>() << std::endl; // Color size: 3
+  std::cout << "Color enum size: " << magic_enum::enum_count<Color>() << std::endl; // Color enum size: 3
 
   // Indexed access to enum value.
   std::cout << "Color[0] = " << magic_enum::enum_value<Color>(0) << std::endl; // Color[0] = RED
@@ -87,22 +89,23 @@ int main() {
     std::cout << " " << c; // Ostream operator for enum.
   }
   std::cout << std::endl;
-  // Color values: RED BLUE GREEN
+  // Colors values: RED BLUE GREEN
 
   enum class Flags { A = 1, B = 2, C = 4, D = 8 };
-  using namespace magic_enum::bitwise_operators; // out-of-the-box bitwise operators for all enums.
+  // Macros cannot be used for a local enum. Keep the using directive inside the function, it enables operators for all enums in scope.
+  using namespace magic_enum::bitwise_operators;
   // Support operators: ~, |, &, ^, |=, &=, ^=.
   Flags flag = Flags::A | Flags::C;
-  std::cout << flag << std::endl; // 5
+  std::cout << magic_enum::enum_integer(flag) << std::endl; // 5
 
   enum color { red, green, blue };
 
-  // Checks whether type is an Unscoped enumeration.
+  // Checks whether type is unscoped enum.
   static_assert(magic_enum::is_unscoped_enum_v<color>);
   static_assert(!magic_enum::is_unscoped_enum_v<Color>);
   static_assert(!magic_enum::is_unscoped_enum_v<Flags>);
 
-  // Checks whether type is an Scoped enumeration.
+  // Checks whether type is scoped enum.
   static_assert(!magic_enum::is_scoped_enum_v<color>);
   static_assert(magic_enum::is_scoped_enum_v<Color>);
   static_assert(magic_enum::is_scoped_enum_v<Flags>);
@@ -114,7 +117,7 @@ int main() {
     std::cout << " "  << e.second << " = " << static_cast<int>(e.first);
   }
   std::cout << std::endl;
-  // Color entries: RED = -10 BLUE = 0 GREEN = 10
+  // Colors entries: RED = -10 BLUE = 0 GREEN = 10
 
   return 0;
 }
