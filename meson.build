@@ -1,7 +1,7 @@
 project(
     'magic_enum', ['cpp'],
     default_options: ['cpp_std=c++17'],
-    version: '0.9.8',
+    version: '0.10.0',
 )
 
 magic_enum_include = include_directories('include')
@@ -17,7 +17,7 @@ magic_enum_dep = declare_dependency(
     compile_args: magic_enum_args,
 )
 
-# install header and pkg-config file
+# Install the headers and the pkg-config file.
 install_subdir('include/magic_enum', install_dir: get_option('includedir'))
 pkg = import('pkgconfig')
 pkg.generate(

@@ -5,11 +5,11 @@
 // | |  | | (_| | (_| | | (__  | |____| | | | |_| | | | | | | | |____|_|   |_|
 // |_|  |_|\__,_|\__, |_|\___| |______|_| |_|\__,_|_| |_| |_|  \_____|
 //                __/ | https://github.com/Neargye/magic_enum
-//               |___/  version 0.9.8
+//               |___/  version 0.10.0
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -33,36 +33,57 @@
 #define NEARGYE_MAGIC_ENUM_FUSE_HPP
 
 #include "magic_enum.hpp"
+#if MAGIC_ENUM_VERSION_MAJOR != 0 || MAGIC_ENUM_VERSION_MINOR != 10 || MAGIC_ENUM_VERSION_PATCH != 0
+#  error "magic_enum headers of different versions are mixed. Check the include paths."
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma warning(push)
+#  pragma warning(disable : 4459 6244) // Local names can match global names in user code.
+#endif
 
 namespace magic_enum {
 
 namespace detail {
 
 template <typename E>
-constexpr optional<std::uintmax_t> fuse_one_enum(optional<std::uintmax_t> hash, E value) noexcept {
-  if (hash) {
-    if (const auto index = enum_index(value)) {
-      return (*hash << log2((enum_count<E>() << 1) - 1)) | *index;
-    }
+MAGIC_ENUM_CONSTEVAL std::size_t fuse_bit_width() noexcept {
+  constexpr auto count = enum_count<E>();
+  static_assert(count > 0, "magic_enum::enum_fuse requires a non-empty reflected enum. Check the enum definition, customize::enum_name and the scan range (customize::enum_range or MAGIC_ENUM_RANGE_MIN/MAX).");
+  return log2((count << 1) - 1);
+}
+
+// The first value takes the lowest bits.
+template <typename E>
+constexpr bool fuse_one_enum(std::uintmax_t& hash, std::size_t& shift, E value) noexcept {
+  // MSVC may otherwise calculate the width at runtime in C++17.
+  constexpr auto width = fuse_bit_width<E>();
+  const auto index = index_of<E, subtype_v<E>>(static_cast<std::underlying_type_t<E>>(value));
+  if (index >= count_v<E, subtype_v<E>>) {
+    return false;
+  }
+  // A single-value enum takes no bits, and the shift can already equal the hash width.
+  if constexpr (width > 0) {
+    hash |= static_cast<std::uintmax_t>(index) << shift;
+    shift += width;
+  }
+  return true;
+}
+
+template <typename... Es>
+constexpr optional<std::uintmax_t> fuse_enum(Es... values) noexcept {
+  auto hash = std::uintmax_t{0};
+  auto shift = std::size_t{0};
+  if ((fuse_one_enum(hash, shift, values) && ...)) {
+    return hash;
   }
   return {};
-}
-
-template <typename E>
-constexpr optional<std::uintmax_t> fuse_enum(E value) noexcept {
-  return fuse_one_enum(0, value);
-}
-
-template <typename E, typename... Es>
-constexpr optional<std::uintmax_t> fuse_enum(E head, Es... tail) noexcept {
-  return fuse_one_enum(fuse_enum(tail...), head);
 }
 
 template <typename... Es>
 constexpr auto typesafe_fuse_enum(Es... values) noexcept {
   enum class enum_fuse_t : std::uintmax_t;
-  const auto fuse = fuse_enum(values...);
-  if (fuse) {
+  if (const auto fuse = fuse_enum(values...)) {
     return optional<enum_fuse_t>{static_cast<enum_fuse_t>(*fuse)};
   }
   return optional<enum_fuse_t>{};
@@ -70,12 +91,12 @@ constexpr auto typesafe_fuse_enum(Es... values) noexcept {
 
 } // namespace magic_enum::detail
 
-// Returns a bijective mix of several enum values. This can be used to emulate 2D switch/case statements.
+// Returns a unique value for each combination of enum values, for nested switch/case statements. An unreflected value fails MAGIC_ENUM_ASSERT.
 template <typename... Es>
 [[nodiscard]] constexpr auto enum_fuse(Es... values) noexcept {
   static_assert((std::is_enum_v<std::decay_t<Es>> && ...), "magic_enum::enum_fuse requires enum type.");
   static_assert(sizeof...(Es) >= 2, "magic_enum::enum_fuse requires at least 2 values.");
-  static_assert((detail::log2(enum_count<std::decay_t<Es>>() + 1) + ...) <= (sizeof(std::uintmax_t) * 8), "magic_enum::enum_fuse does not work for large enums");
+  static_assert((detail::fuse_bit_width<std::decay_t<Es>>() + ...) <= (sizeof(std::uintmax_t) * 8), "magic_enum::enum_fuse requires the summed index bit widths of all enums to fit in std::uintmax_t.");
 #if defined(MAGIC_ENUM_NO_TYPESAFE_ENUM_FUSE)
   const auto fuse = detail::fuse_enum<std::decay_t<Es>...>(values...);
 #else
@@ -85,5 +106,9 @@ template <typename... Es>
 }
 
 } // namespace magic_enum
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma warning(pop)
+#endif
 
 #endif // NEARGYE_MAGIC_ENUM_FUSE_HPP

@@ -1,6 +1,6 @@
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019 - 2024 Daniil Goncharov <neargye@gmail.com>.
+// Copyright (c) 2019 - 2026 Daniil Goncharov <neargye@gmail.com>.
 //
 // Permission is hereby  granted, free of charge, to any  person obtaining a copy
 // of this software and associated  documentation files (the "Software"), to deal
@@ -20,18 +20,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 
 #include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_bitwise.hpp>
+#include <magic_enum/magic_enum_flags.hpp>
 #include <magic_enum/magic_enum_iostream.hpp>
 
 enum class AnimalFlags : std::uint64_t { HasClaws = 1 << 10, CanFly = 1 << 20, EatsFish = 1 << 30, Endangered = std::uint64_t{1} << 40 };
-// Add specialization `is_flags` to define that enum are flags.
-template <>
-struct magic_enum::customize::enum_range<AnimalFlags> {
-  static constexpr bool is_flags = true;
-};
+// ADL operators enable flag reflection.
+MAGIC_ENUM_DEFINE_BITWISE_OPERATORS(AnimalFlags);
+MAGIC_ENUM_DEFINE_IOSTREAM_OPERATORS(AnimalFlags);
 
 int main() {
   // Enum-flags variable to string name.
@@ -51,7 +52,7 @@ int main() {
   // String name to enum-flags value.
   auto f2 = magic_enum::enum_flags_cast<AnimalFlags>("EatsFish|CanFly");
   if (f2.has_value()) {
-    std::cout << "EatsFish|CanFly = " << magic_enum::enum_integer(f2.value()) << std::endl; // CanFly|EatsFish = 1074790400
+    std::cout << "EatsFish|CanFly = " << magic_enum::enum_integer(f2.value()) << std::endl; // EatsFish|CanFly = 1074790400
   }
 
   // String name to enum-flags value with custom separator.
@@ -62,7 +63,7 @@ int main() {
   }
 
   // Integer value to enum-flags value.
-  auto f3 = magic_enum::enum_cast<AnimalFlags>(1073742848);
+  auto f3 = magic_enum::enum_flags_cast<AnimalFlags>(1073742848);
   if (f3.has_value()) {
     std::cout << magic_enum::enum_flags_name(f3.value()) << " = " << magic_enum::enum_integer(f3.value()) << std::endl; // HasClaws|EatsFish = 1073742848
   }
@@ -71,9 +72,8 @@ int main() {
   auto f4_integer = magic_enum::enum_integer(AnimalFlags::HasClaws);
   std::cout << "HasClaws = " << f4_integer << std::endl; // HasClaws = 1024
 
-  using magic_enum::iostream_operators::operator<<; // out-of-the-box ostream operator for enum-flags.
   // Ostream operator for enum-flags.
-  std::cout << f1 << " " << f2 << " " << f3 << std::endl; // Endangered CanFly|EatsFish HasClaws|EatsFish
+  std::cout << f1 << " " << *f2 << " " << *f3 << std::endl; // Endangered CanFly|EatsFish HasClaws|EatsFish
 
   // Number of enum-flags values.
   std::cout << "AnimalFlags enum size: " << magic_enum::enum_count<AnimalFlags>() << std::endl; // AnimalFlags enum size: 4
@@ -90,7 +90,6 @@ int main() {
   std::cout << std::endl;
   // AnimalFlags values: HasClaws CanFly EatsFish Endangered
 
-  using namespace magic_enum::bitwise_operators; // out-of-the-box bitwise operators for all enums.
   // Support operators: ~, |, &, ^, |=, &=, ^=.
   AnimalFlags flag = AnimalFlags::HasClaws | AnimalFlags::CanFly;
   std::cout << flag << std::endl; // HasClaws|CanFly
@@ -102,7 +101,7 @@ int main() {
     std::cout << " "  << e.second << " = " << magic_enum::enum_integer(e.first);
   }
   std::cout << std::endl;
-  // AnimalFlags entries: AnimalFlags entries: HasClaws = 1024 CanFly = 1048576 EatsFish = 1073741824 Endangered = 1099511627776
+  // AnimalFlags entries: HasClaws = 1024 CanFly = 1048576 EatsFish = 1073741824 Endangered = 1099511627776
 
   return 0;
 }
