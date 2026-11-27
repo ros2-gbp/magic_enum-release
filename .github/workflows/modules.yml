@@ -1,0 +1,224 @@
+name: Modules
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['**.md', 'doc/**']
+  pull_request:
+    paths-ignore: ['**.md', 'doc/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  modules:
+    env:
+      CMAKE_VERSION: ${{ matrix.config.cmake }}
+      BUILD_TYPES: ${{ matrix.config.build_types }}
+    name: ${{ matrix.config.os }} / ${{ matrix.config.compiler }} / CMake ${{ matrix.config.cmake }} / C++${{ matrix.config.standard }} / ${{ matrix.config.stdlib }} / IMPORT_STD=${{ matrix.config.import_std }} / FMT=${{ matrix.config.fmt }}
+    timeout-minutes: 30
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # fmt names the {fmt} target linked by the module. GCC 16 cannot link fmt::fmt-header-only, see doc/limitations.md.
+          - { os: "ubuntu-24.04", compiler: "clang-19", cmake: "4.5.1", standard: 20, stdlib: "libstdc++", import_std: "OFF", fmt: "fmt::fmt-header-only", build_types: "Release Debug" }
+          - { os: "ubuntu-24.04", compiler: "clang-19", cmake: "4.5.1", standard: 23, stdlib: "libc++", import_std: "ON", fmt: "OFF", build_types: "Debug" }
+          - { os: "ubuntu-26.04", compiler: "gcc-16", cmake: "4.5.1", standard: 20, stdlib: "libstdc++", import_std: "OFF", fmt: "fmt::fmt", build_types: "Release" }
+          - { os: "ubuntu-26.04", compiler: "gcc-16", cmake: "4.5.1", standard: 26, stdlib: "libstdc++", import_std: "ON", fmt: "OFF", build_types: "Release" }
+          - { os: "macos-26", compiler: "clang-22", cmake: "4.5.1", standard: 23, stdlib: "libc++", import_std: "OFF", fmt: "fmt::fmt", build_types: "Release Debug" }
+          - { os: "macos-26", compiler: "clang-22", cmake: "4.5.1", standard: 23, stdlib: "libc++", import_std: "ON", fmt: "OFF", build_types: "Release" }
+          - { os: "windows-2025", compiler: "MSVC", cmake: "4.5.1", standard: 20, stdlib: "MSVC STL", import_std: "OFF", fmt: "OFF", build_types: "Release" }
+          - { os: "windows-2025", compiler: "MSVC", cmake: "4.5.1", standard: 23, stdlib: "MSVC STL", import_std: "ON", fmt: "OFF", build_types: "Release" }
+          # CMake 4.4 covers the experimental import std path. With MSVC it does not link the import std objects.
+          - { os: "ubuntu-24.04", compiler: "clang-19", cmake: "4.4.0", standard: 23, stdlib: "libc++", import_std: "ON", fmt: "OFF", build_types: "Debug" }
+          - { os: "ubuntu-26.04", compiler: "gcc-16", cmake: "4.4.0", standard: 26, stdlib: "libstdc++", import_std: "ON", fmt: "OFF", build_types: "Release" }
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Set up MSVC
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+
+    - name: Set up Linux compiler
+      if: ${{ runner.os == 'Linux' }}
+      uses: ./.github/actions/setup-linux-compiler
+      with:
+        compiler: ${{ matrix.config.compiler }}
+        stdlib: ${{ matrix.config.stdlib }}
+
+    - name: Install Clang on macOS
+      if: ${{ runner.os == 'macOS' }}
+      run: |
+        compiler="${{ matrix.config.compiler }}"
+        llvm_formula="llvm@${compiler#clang-}"
+        brew list --versions "$llvm_formula" > /dev/null 2>&1 || brew install --skip-link "$llvm_formula"
+        command -v ninja > /dev/null 2>&1 || brew install ninja
+        llvm_prefix="$(brew --prefix "$llvm_formula")"
+        echo "${llvm_prefix}/bin" >> "${GITHUB_PATH}"
+        echo "CC=${llvm_prefix}/bin/clang" >> "${GITHUB_ENV}"
+        echo "CXX=${llvm_prefix}/bin/clang++" >> "${GITHUB_ENV}"
+        if [[ "${{ matrix.config.import_std }}" == "ON" ]]; then
+          # Clang does not search the Homebrew libc++ directory for the module metadata.
+          modules_json="$(find "${llvm_prefix}/lib" -name libc++.modules.json -print -quit)"
+          if [[ -z "$modules_json" ]]; then
+            echo "libc++.modules.json not found in ${llvm_prefix}/lib" >&2
+            exit 1
+          fi
+          echo "STDLIB_MODULES_JSON=${modules_json}" >> "${GITHUB_ENV}"
+          echo "LDFLAGS=-L${llvm_prefix}/lib/c++ -Wl,-rpath,${llvm_prefix}/lib/c++ -L${llvm_prefix}/lib/unwind -lunwind" >> "${GITHUB_ENV}"
+        fi
+        "${llvm_prefix}/bin/clang++" --version
+
+    - name: Install fmt
+      if: ${{ matrix.config.fmt != 'OFF' }}
+      run: |
+        if [[ "$RUNNER_OS" == macOS ]]; then
+          # The Homebrew bottle is built with Apple Clang and libc++.
+          brew install fmt
+          brew list --versions fmt
+          echo "FMT_PREFIX=$(brew --prefix fmt)" >> "${GITHUB_ENV}"
+        else
+          sudo apt-get update
+          sudo apt-get install -y libfmt-dev
+        fi
+
+    - name: Install CMake 4.4.0
+      if: matrix.config.cmake == '4.4.0'
+      run: python3 -m pip install "cmake==$CMAKE_VERSION" --break-system-packages
+
+    - name: Install CMake 4.5.1
+      if: matrix.config.cmake == '4.5.1'
+      working-directory: ${{ runner.temp }}
+      run: |
+        case "$RUNNER_OS" in
+          Linux)
+            package="cmake-${CMAKE_VERSION}-linux-x86_64"
+            archive="$package.tar.gz"
+            digest=83b71181fb62b4fe8f26067a9321448572e7a43bd04ff6c7f54a24c33698f16d
+            bin="$package/bin"
+            ;;
+          macOS)
+            package="cmake-${CMAKE_VERSION}-macos-universal"
+            archive="$package.tar.gz"
+            digest=e1fb288543e4eb2a410e385ecebc64323bda51f0205782f2b094ccd5d572ca2d
+            bin="$package/CMake.app/Contents/bin"
+            ;;
+          Windows)
+            package="cmake-${CMAKE_VERSION}-windows-x86_64"
+            archive="$package.zip"
+            digest=bfe6eadb245dc8213e0d3feea316b520cb2aae92f5667ffd76059ba6b05c430c
+            bin="$package/bin"
+            ;;
+        esac
+        curl --fail --location --retry 3 --output "$archive" "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/${archive}"
+        checksum=$(cmake -E sha256sum "$archive")
+        if [[ "${checksum%% *}" != "$digest" ]]; then
+          echo "Unexpected SHA-256 for $archive" >&2
+          exit 1
+        fi
+        cmake -E tar xf "$archive"
+        echo "${RUNNER_TEMP}/${bin}" >> "$GITHUB_PATH"
+
+    - name: Configure
+      id: configure
+      run: |
+        cmake --version | tr -d '\r' | grep -Fx "cmake version $CMAKE_VERSION"
+        toolchain_options=()
+        if [[ "${{ matrix.config.stdlib }}" == "libc++" ]]; then
+          toolchain_options+=(-DCMAKE_CXX_FLAGS:STRING=-stdlib=libc++)
+        fi
+
+        if [[ "${{ matrix.config.fmt }}" == "OFF" ]]; then
+          toolchain_options+=(-DMAGIC_ENUM_MODULE_WITH_FMT=OFF)
+        else
+          toolchain_options+=(-DMAGIC_ENUM_MODULE_WITH_FMT=ON "-DMAGIC_ENUM_MODULE_FMT_TARGET=${{ matrix.config.fmt }}")
+          if [[ -n "${FMT_PREFIX:-}" ]]; then
+            toolchain_options+=("-DCMAKE_PREFIX_PATH=${FMT_PREFIX}")
+          fi
+        fi
+
+        if [[ "${{ matrix.config.import_std }}" == "ON" ]]; then
+          if [[ "$CMAKE_VERSION" == "4.4.0" ]]; then
+            # The gate value belongs to this CMake release. CMake 4.5 needs no gate.
+            toolchain_options+=(-DCMAKE_EXPERIMENTAL_CXX_IMPORT_STD=f35a9ac6-8463-4d38-8eec-5d6008153e7d)
+            if [[ "${{ matrix.config.compiler }}" == gcc-* ]]; then
+              STDLIB_MODULES_JSON="$("$CXX" -print-file-name=libstdc++.modules.json)"
+            fi
+          fi
+          if [[ -n "${STDLIB_MODULES_JSON:-}" ]]; then
+            toolchain_options+=("-DCMAKE_CXX_STDLIB_MODULES_JSON=${STDLIB_MODULES_JSON}")
+          fi
+        fi
+
+        for build_type in $BUILD_TYPES; do
+          cmake -S . -B "build-${build_type}" -G Ninja \
+            -DCMAKE_BUILD_TYPE="${build_type}" \
+            -DCMAKE_CXX_STANDARD=${{ matrix.config.standard }} \
+            -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+            -DCMAKE_CXX_EXTENSIONS=OFF \
+            -DMAGIC_ENUM_USE_MODULES=ON \
+            -DMAGIC_ENUM_MODULE_IMPORT_STD=${{ matrix.config.import_std }} \
+            "${toolchain_options[@]}"
+        done
+
+    - name: Reconfigure and check import std selection
+      run: |
+        for build_type in $BUILD_TYPES; do
+          cmake -S . -B "build-${build_type}"
+          setting=$(grep '^MAGIC_ENUM_MODULE_IMPORT_STD:BOOL=' "build-${build_type}/CMakeCache.txt")
+          setting=${setting%$'\r'}
+          echo "$setting"
+          [[ "$setting" == 'MAGIC_ENUM_MODULE_IMPORT_STD:BOOL=${{ matrix.config.import_std }}' ]]
+        done
+
+    - name: Build
+      run: |
+        targets=(magic_enum_module_tests)
+        if [[ "$RUNNER_OS" == Windows ]]; then
+          targets+=(magic_enum_verify_interface_header_sets)
+        fi
+        for build_type in $BUILD_TYPES; do
+          cmake --build "build-${build_type}" --target "${targets[@]}"
+        done
+
+    - name: Test
+      run: |
+        for build_type in $BUILD_TYPES; do
+          ctest --test-dir "build-${build_type}" --output-on-failure --no-tests=error -L module
+        done
+
+    - name: Check import std diagnostics
+      if: "!cancelled() && steps.configure.outcome == 'success'"
+      run: |
+        expect_configure_error() {
+          local name="$1" standard="$2" expected="$3"
+          local status=0
+          cmake -S . -B "build-reject-${name}" -G Ninja -DCMAKE_CXX_STANDARD="${standard}" \
+            -DMAGIC_ENUM_USE_MODULES=ON -DMAGIC_ENUM_MODULE_IMPORT_STD=ON > "configure-${name}.log" 2>&1 || status=$?
+          cat "configure-${name}.log"
+          if [[ "$status" == 0 ]]; then
+            echo "${name}: configure unexpectedly accepted MAGIC_ENUM_MODULE_IMPORT_STD=ON" >&2
+            return 1
+          fi
+          grep -F "$expected" "configure-${name}.log"
+        }
+
+        expect_configure_error cpp20 20 'MAGIC_ENUM_MODULE_IMPORT_STD requires CMAKE_CXX_STANDARD >= 23'
+        # libstdc++ on Ubuntu 24.04 ships no module metadata.
+        if [[ "${{ matrix.config.os }}" == ubuntu-24.04 && "${{ matrix.config.stdlib }}" == libstdc++ ]]; then
+          expect_configure_error unsupported 23 'MAGIC_ENUM_MODULE_IMPORT_STD is not supported'
+        fi

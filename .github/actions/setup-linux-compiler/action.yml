@@ -1,0 +1,18 @@
+name: Set up Linux compiler
+description: Install the requested GCC or Clang and set CC and CXX.
+inputs:
+  compiler:
+    description: Versioned compiler, for example gcc-16 or clang-23
+    required: true
+  stdlib:
+    description: libstdc++ or libc++ (Clang only)
+    default: libstdc++
+runs:
+  using: composite
+  steps:
+  - name: Set up compiler
+    shell: bash
+    env:
+      CC: ${{ inputs.compiler }}
+      STDLIB: ${{ inputs.stdlib }}
+    run: bash "${GITHUB_ACTION_PATH}/setup.sh"

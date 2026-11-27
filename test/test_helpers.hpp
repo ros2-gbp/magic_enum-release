@@ -6,6 +6,8 @@
 
 #include <doctest/doctest.h>
 
+#include <magic_enum/magic_enum_iostream.hpp>
+
 #include <cstddef>
 #include <sstream>
 #include <string>
@@ -13,6 +15,40 @@
 #include <utility>
 
 namespace magic_enum_tests {
+
+struct ConstReferencePredicate {
+  constexpr bool operator()(const char& lhs, const char& rhs) & noexcept { return lhs == rhs; }
+  bool operator()(char&&, char&&) & = delete;
+};
+
+struct ThrowingReferencePredicate {
+  bool operator()(const char& lhs, const char& rhs) & {
+    if (lhs == rhs) {
+      throw 42;
+    }
+    return false;
+  }
+  bool operator()(char&& lhs, char&& rhs) & noexcept { return lhs == rhs; }
+};
+
+struct RvalueOnlyArgument {
+  template <typename T>
+  constexpr int operator()(T&&) const { return 7; }
+
+  template <typename T>
+  int operator()(T&) const = delete;
+};
+
+template <typename String>
+void require_text(const String& value, const typename String::value_type* expected) {
+  using char_type = typename String::value_type;
+
+  const auto expected_size = std::char_traits<char_type>::length(expected);
+  REQUIRE(value.size() == expected_size);
+  for (std::size_t i = 0; i < expected_size; ++i) {
+    REQUIRE(value[i] == expected[i]);
+  }
+}
 
 template <typename View>
 void require_null_terminated(View value) {
@@ -24,15 +60,8 @@ void require_null_terminated(View value) {
 
 template <typename View>
 void require_null_terminated(View value, const typename View::value_type* expected) {
-  using char_type = typename View::value_type;
-
   require_null_terminated(value);
-
-  const auto expected_size = std::char_traits<char_type>::length(expected);
-  REQUIRE(value.size() == expected_size);
-  for (std::size_t i = 0; i < expected_size; ++i) {
-    REQUIRE(value[i] == expected[i]);
-  }
+  require_text(value, expected);
 }
 
 template <typename String>
@@ -45,15 +74,8 @@ void require_c_str_null_terminated(const String& value) {
 
 template <typename String>
 void require_c_str_null_terminated(const String& value, const typename String::value_type* expected) {
-  using char_type = typename String::value_type;
-
   require_c_str_null_terminated(value);
-
-  const auto expected_size = std::char_traits<char_type>::length(expected);
-  REQUIRE(value.size() == expected_size);
-  for (std::size_t i = 0; i < expected_size; ++i) {
-    REQUIRE(value[i] == expected[i]);
-  }
+  require_text(value, expected);
 }
 
 template <typename Value, typename Char>
@@ -66,6 +88,9 @@ void require_ostream(Value&& value, const Char* expected) {
   REQUIRE(stream.str() == expected);
 }
 
+template <typename Char>
+struct CustomCharTraits : std::char_traits<Char> {};
+
 template <typename Value, typename Char>
 void require_istream(Value expected, const Char* name) {
   using namespace magic_enum::istream_operators;
@@ -74,6 +99,12 @@ void require_istream(Value expected, const Char* name) {
   std::decay_t<Value> value;
   stream >> value;
   REQUIRE(stream);
+  REQUIRE(value == expected);
+
+  std::basic_istringstream<Char, CustomCharTraits<Char>> custom_stream{name};
+  value = {};
+  custom_stream >> value;
+  REQUIRE(custom_stream);
   REQUIRE(value == expected);
 }
 

@@ -1,13 +1,10 @@
 name: Scorecard supply-chain security
 
 on:
-  # For Branch-Protection check. Only the default branch is supported. See
-  # https://github.com/ossf/scorecard/blob/main/docs/checks.md#branch-protection
+  # The Branch-Protection check needs this trigger and the Maintained check needs the schedule.
   branch_protection_rule:
-  # To guarantee Maintained check is occasionally updated. See
-  # https://github.com/ossf/scorecard/blob/main/docs/checks.md#maintained
   schedule:
-    - cron: '42 15 * * 4'
+  - cron: '42 15 * * 4'
   push:
     branches: [master]
 
@@ -18,40 +15,25 @@ jobs:
     name: Scorecard analysis
     runs-on: ubuntu-latest
     permissions:
-      # Needed to upload the results to code-scanning dashboard.
+      # Upload the results to code scanning.
       security-events: write
-      # Needed to publish results and get a badge (see publish_results below).
+      # Publish the results for the badge.
       id-token: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
-      - name: Run analysis
-        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
-        with:
-          results_file: results.sarif
-          results_format: sarif
-          # (Optional) "write" PAT token. Uncomment the `repo_token` line below if:
-          # - you want to enable the Branch-Protection check and you prefer not to use the new Repo Rules
-          # To create the PAT, follow the steps in https://github.com/ossf/scorecard-action#authentication-with-pat.
-          # repo_token: ${{ secrets.SCORECARD_TOKEN }}
+    - name: Run analysis
+      uses: ossf/scorecard-action@23f22cd43608bae7a1f1fa2603d7314dee9538a5 # v2.6.0
+      with:
+        results_file: results.sarif
+        results_format: sarif
+        # The README badge reads the published results.
+        publish_results: true
 
-          # - Publish results to OpenSSF REST API for easy access by consumers
-          # - Allows the repository to include the Scorecard badge.
-          # - See https://github.com/ossf/scorecard-action#publishing-results.
-          publish_results: true
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: SARIF file
-          path: results.sarif
-          retention-days: 5
-
-      - name: Upload to code scanning
-        uses: github/codeql-action/upload-sarif@v4.37.3
-        with:
-          sarif_file: results.sarif
+    - name: Upload to code scanning
+      uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      with:
+        sarif_file: results.sarif
